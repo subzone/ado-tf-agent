@@ -2,7 +2,6 @@ import * as SDK from "azure-devops-extension-sdk";
 import { getClient } from "azure-devops-extension-api/Common/Client";
 import { BuildRestClient } from "azure-devops-extension-api/Build";
 import JSZip from "jszip";
-import mermaid from "mermaid";
 import "./planTab.css";
 
 const DEFAULT_ARTIFACT = "terraform-plan";
@@ -136,8 +135,38 @@ function resolveArtifactName(): string {
   return (cfg.artifactName && cfg.artifactName.trim()) || DEFAULT_ARTIFACT;
 }
 
+/** Mermaid is large; load it only after the host stops the loading spinner. */
+async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
+  const host = document.getElementById("tf-diagram-host");
+  if (!host) {
+    return;
+  }
+  try {
+    const mermaid = (await import("mermaid")).default;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "default",
+      securityLevel: "strict",
+      flowchart: { useMaxWidth: true, htmlLabels: true },
+    });
+    const graph = document.createElement("div");
+    graph.className = "mermaid";
+    graph.textContent = diagramSource;
+    host.innerHTML = "";
+    host.appendChild(graph);
+    await mermaid.run({ nodes: [graph] });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    host.innerHTML = `<p class="muted">Diagram could not be rendered: ${escapeHtml(msg)}</p><pre class="tf-mermaid-fallback">${escapeHtml(
+      diagramSource,
+    )}</pre>`;
+  }
+}
+
 async function main(): Promise<void> {
+  await SDK.init({ loaded: false, applyTheme: true });
   await SDK.ready();
+
   const project = SDK.getWebContext().project;
   if (!project?.name) {
     throw new Error("Project context is not available.");
@@ -149,6 +178,7 @@ async function main(): Promise<void> {
 
   const app = document.getElementById("app");
   if (!app) {
+    await SDK.notifyLoadFailed("Missing #app root element.");
     return;
   }
 
@@ -170,35 +200,21 @@ async function main(): Promise<void> {
     <h3>Resource changes</h3>
     ${renderTable(plan)}
     <h3>Architecture sketch (by provider prefix)</h3>
-    <p class="muted">Grouped from <code>resource_changes</code> — refine with module edges in a later version.</p>
-    <div class="diagram-wrap" id="tf-diagram-host"></div>
+    <p class="muted">Grouped from <code>resource_changes</code>. Diagram loads after this page appears.</p>
+    <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering diagram…</p></div>
   `;
 
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "default",
-    securityLevel: "strict",
-    flowchart: { useMaxWidth: true, htmlLabels: true },
-  });
+  await SDK.notifyLoadSucceeded();
 
-  const host = document.getElementById("tf-diagram-host");
-  if (host) {
-    const graph = document.createElement("div");
-    graph.className = "mermaid";
-    graph.textContent = diagramSource;
-    host.appendChild(graph);
-    await mermaid.run({ nodes: [graph] });
-  }
-
-  SDK.notifyLoadSucceeded();
+  void renderDiagramWhenReady(diagramSource);
 }
 
-void main().catch((err: unknown) => {
+void main().catch(async (err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   const app = document.getElementById("app");
   if (app) {
     app.innerHTML = `<div class="error"><strong>Could not load plan</strong><p>${escapeHtml(message)}</p>
       <p class="muted">Run a pipeline with the <strong>Terraform</strong> task (plan) and enable <strong>Publish plan JSON artifact</strong>, or align the artifact name with this tab.</p></div>`;
   }
-  SDK.notifyLoadFailed(message);
+  await SDK.notifyLoadFailed(message);
 });
