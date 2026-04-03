@@ -1,6 +1,13 @@
-# Azure DevOps pipeline for subzone.ado-tf-agent (install → init → validate → plan → apply).
-# Prerequisite: install the extension from Marketplace or upload the VSIX for org **subzone**
-# (publisher id). Task reference: subzone.ado-tf-agent.terraform-task@0
+# Azure DevOps pipeline using the ADO Terraform Agent extension task.
+#
+# Task ID: subzone.ado-tf-agent.terraform-task@0
+#   publisher = subzone | extension id = ado-tf-agent | contribution id = terraform-task | major = 0
+#
+# If you see "A task is missing", the extension is NOT installed on THIS Azure DevOps organization.
+# Install it first:
+#   Organization Settings (gear) → Extensions → Shared → Upload extension → select the .vsix
+#   OR Browse marketplace → search "ADO Terraform Agent" (if published publicly).
+# Then re-run the pipeline. Same org must host both the project and the extension.
 
 trigger:
   branches:

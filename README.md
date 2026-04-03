@@ -13,7 +13,24 @@ Azure DevOps extension that adds a **Terraform** pipeline task and a **Terraform
 - **`infra/`** — minimal root module using the **null** provider only (no Azure/AWS/GCP credentials). Local backend by default.
 - **`azure-pipelines.yml`** — installs the extension task **subzone.ado-tf-agent.terraform-task@0**, then runs init → validate → plan (with **Publish plan JSON artifact**) → apply.
 
-**In Azure DevOps:** install the extension for your organization, create a pipeline from this repo using `azure-pipelines.yml`, and run it. After **Plan**, open the completed build and select the **Terraform** tab to view the diagram.
+**In Azure DevOps**
+
+1. **Install the extension on the same organization** that runs the pipeline (otherwise YAML fails with *A task is missing*):
+   - **Organization Settings** (⚙ bottom left) → **Extensions** → **Shared** → **Upload extension** → choose `dist/subzone.ado-tf-agent-*.vsix` from a local `npm run package`, **or** install from the Marketplace if it is published.
+2. Create a pipeline from **`azure-pipelines.yml`** and run it.
+3. After **Plan**, open the completed build → **Terraform** tab (build results).
+
+There is no substitute pipeline in this repo: **testing the extension means installing it on your org**, then running **`azure-pipelines.yml`**. Plain Terraform scripts would not exercise the task or the build **Terraform** tab.
+
+### “A task is missing … subzone.ado-tf-agent.terraform-task”
+
+The YAML reference `subzone.ado-tf-agent.terraform-task@0` is correct (`publisher` · `extension id` · `contribution id` · `@major`). That error means Azure DevOps does not see the extension on **this org**.
+
+1. From the repo: `npm install && npm run package` → take `dist/subzone.ado-tf-agent-*.vsix`.
+2. **Azure DevOps** → **Organization settings** → **Extensions** → **Shared** → **Upload extension** → select the VSIX → allow for the org (and your project if prompted).
+3. Create or edit the pipeline to use **`azure-pipelines.yml`** from this repo and **Run** again.
+
+If you use GitHub Actions to publish to the Marketplace, install from **Browse marketplace** once the listing is live (same org as the pipeline).
 
 **Locally (without the extension):**
 
