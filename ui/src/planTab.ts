@@ -1,6 +1,10 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { getClient } from "azure-devops-extension-api/Common/Client";
-import { BuildRestClient } from "azure-devops-extension-api/Build";
+import {
+  BuildRestClient,
+  BuildServiceIds,
+  type IBuildPageDataService,
+} from "azure-devops-extension-api/Build";
 import JSZip from "jszip";
 import "./planTab.css";
 
@@ -101,7 +105,35 @@ async function loadPlanJsonFromArtifact(
   return JSON.parse(text) as TerraformPlanJson;
 }
 
-function resolveBuildId(): number {
+function parseBuildIdFromWindow(): number | undefined {
+  const tryParams = (raw: string): number | undefined => {
+    const q = raw.startsWith("?") || raw.startsWith("#") ? raw.slice(1) : raw;
+    if (!q.trim()) {
+      return undefined;
+    }
+    const params = new URLSearchParams(q);
+    for (const key of ["buildId", "buildID", "build", "id"]) {
+      const v = params.get(key);
+      if (v) {
+        const n = parseInt(v, 10);
+        if (!Number.isNaN(n)) {
+          return n;
+        }
+      }
+    }
+    return undefined;
+  };
+  const fromSearch = tryParams(window.location.search);
+  if (fromSearch !== undefined) {
+    return fromSearch;
+  }
+  if (window.location.hash.length > 1) {
+    return tryParams(window.location.hash);
+  }
+  return undefined;
+}
+
+function resolveBuildIdFromConfiguration(): number {
   const cfg = SDK.getConfiguration() as Record<string, unknown>;
   const fromObj = (o: unknown): number | undefined => {
     if (o && typeof o === "object" && "id" in o) {
@@ -127,7 +159,32 @@ function resolveBuildId(): number {
       return id;
     }
   }
-  throw new Error("Could not resolve build id from extension host configuration.");
+  throw new Error(
+    "Could not resolve build id. The build results host did not provide configuration; ensure you open this tab from a completed pipeline run.",
+  );
+}
+
+/** `getConfiguration()` is often empty here; use the official build page service first. */
+async function resolveBuildId(): Promise<number> {
+  try {
+    const buildPageService = await SDK.getService<IBuildPageDataService>(
+      BuildServiceIds.BuildPageDataService,
+    );
+    const pageData = buildPageService.getBuildPageData();
+    const id = pageData?.build?.id;
+    if (typeof id === "number" && !Number.isNaN(id)) {
+      return id;
+    }
+  } catch {
+    /* Service not registered in this host — fall through. */
+  }
+
+  const fromUrl = parseBuildIdFromWindow();
+  if (fromUrl !== undefined) {
+    return fromUrl;
+  }
+
+  return resolveBuildIdFromConfiguration();
 }
 
 function resolveArtifactName(): string {
@@ -171,7 +228,7 @@ async function main(): Promise<void> {
   if (!project?.name) {
     throw new Error("Project context is not available.");
   }
-  const buildId = resolveBuildId();
+  const buildId = await resolveBuildId();
   const artifactName = resolveArtifactName();
   const buildClient = getClient(BuildRestClient);
   const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
