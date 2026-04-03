@@ -11,7 +11,7 @@ Azure DevOps extension that adds a **Terraform** pipeline task and a **Terraform
 ## Test sample (Terraform + pipeline)
 
 - **`infra/`** — minimal root module using the **null** provider only (no Azure/AWS/GCP credentials). Local backend by default.
-- **`azure-pipelines.yml`** — installs the extension task **subzone.ado-tf-agent.terraform-task@0**, then runs init → validate → plan (with **Publish plan JSON artifact**) → apply.
+- **`azure-pipelines.yml`** — installs the extension task **subzone.ado-tf-agent.terraform-task.Terraform@0**, then runs init → validate → plan (with **Publish plan JSON artifact**) → apply.
 
 **In Azure DevOps**
 
@@ -22,15 +22,18 @@ Azure DevOps extension that adds a **Terraform** pipeline task and a **Terraform
 
 There is no substitute pipeline in this repo: **testing the extension means installing it on your org**, then running **`azure-pipelines.yml`**. Plain Terraform scripts would not exercise the task or the build **Terraform** tab.
 
-### “A task is missing … subzone.ado-tf-agent.terraform-task”
+### “A task is missing …” (YAML task name)
 
-The YAML reference `subzone.ado-tf-agent.terraform-task@0` is correct (`publisher` · `extension id` · `contribution id` · `@major`). That error means Azure DevOps does not see the extension on **this org**.
+Marketplace tasks use **four** dot-separated parts before `@`, not three:
 
-1. From the repo: `npm install && npm run package` → take `dist/subzone.ado-tf-agent-*.vsix`.
-2. **Azure DevOps** → **Organization settings** → **Extensions** → **Shared** → **Upload extension** → select the VSIX → allow for the org (and your project if prompted).
-3. Create or edit the pipeline to use **`azure-pipelines.yml`** from this repo and **Run** again.
+`publisher.extensionId.contributionId.taskJsonName@major`
 
-If you use GitHub Actions to publish to the Marketplace, install from **Browse marketplace** once the listing is live (same org as the pipeline).
+Example for this extension: **`subzone.ado-tf-agent.terraform-task.Terraform@0`**
+
+- **Terraform** is the `name` field from `tasks/Terraform/task.json` (not the friendly name).
+- Using only `subzone.ado-tf-agent.terraform-task@0` is invalid and produces *task is missing* even when the extension is installed.
+
+If the name is correct and it still fails, the extension is not on **this** org: install it under **Organization settings → Extensions**, then re-run the pipeline.
 
 **Locally (without the extension):**
 
@@ -106,13 +109,13 @@ pool:
   vmImage: ubuntu-latest
 
 steps:
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Install Terraform
     inputs:
       command: install
       terraformVersion: 1.7.5
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform init (Azure backend)
     inputs:
       command: init
@@ -123,7 +126,7 @@ steps:
       azureContainer: tfstate
       azureStateKey: myapp.tfstate
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform plan
     inputs:
       command: plan

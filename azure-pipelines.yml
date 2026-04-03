@@ -1,7 +1,8 @@
 # Azure DevOps pipeline using the ADO Terraform Agent extension task.
 #
-# Task ID: subzone.ado-tf-agent.terraform-task@0
-#   publisher = subzone | extension id = ado-tf-agent | contribution id = terraform-task | major = 0
+# Task reference (4 parts before @): publisher.extensionId.contributionId.taskJsonName@major
+#   subzone · ado-tf-agent · terraform-task · Terraform · @0
+#   task.json "name" is Terraform — omitting it causes "A task is missing".
 #
 # If you see "A task is missing", the extension is NOT installed on THIS Azure DevOps organization.
 # Install it first:
@@ -26,26 +27,26 @@ steps:
   - checkout: self
     displayName: Checkout repository
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Install Terraform
     inputs:
       command: install
       terraformVersion: $(terraformVersion)
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform init (local state)
     inputs:
       command: init
       workingDirectory: $(tfWorkingDirectory)
       backendType: local
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform validate
     inputs:
       command: validate
       workingDirectory: $(tfWorkingDirectory)
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform plan (publishes plan.json for Terraform tab)
     inputs:
       command: plan
@@ -54,7 +55,7 @@ steps:
       publishPlanArtifact: true
       planArtifactName: terraform-plan
 
-  - task: subzone.ado-tf-agent.terraform-task@0
+  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform apply (saved plan)
     inputs:
       command: apply
