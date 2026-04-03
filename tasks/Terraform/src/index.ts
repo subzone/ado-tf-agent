@@ -171,14 +171,14 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
     for (const a of extraFromInput) {
       runner.arg(a);
     }
-    return runner.exec({ cwd });
+    return runner.execAsync({ cwd });
   }
 
   if (command === "validate") {
     for (const a of extraFromInput) {
       runner.arg(a);
     }
-    return runner.exec({ cwd });
+    return runner.execAsync({ cwd });
   }
 
   if (command === "plan") {
@@ -188,7 +188,7 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
     for (const a of extraFromInput) {
       runner.arg(a);
     }
-    return runner.exec({ cwd });
+    return runner.execAsync({ cwd });
   }
 
   if (command === "apply") {
@@ -197,7 +197,7 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
       runner.arg(a);
     }
     runner.arg(planFile);
-    return runner.exec({ cwd });
+    return runner.execAsync({ cwd });
   }
 
   if (command === "show") {
@@ -206,7 +206,7 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
       runner.arg(a);
     }
     runner.arg(planFile);
-    return runner.exec({ cwd });
+    return runner.execAsync({ cwd });
   }
 
   throw new Error(`Unknown terraform command: ${command}`);
@@ -217,8 +217,7 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
   fs.mkdirSync(staging, { recursive: true });
   const jsonPath = path.join(staging, "plan.json");
   const tf = tl.which("terraform", true);
-  const extra = parseExtraArgs(tl.getInput("additionalArguments") || "");
-  const args = ["show", "-json", planFile, ...extra];
+  const args = ["show", "-json", planFile];
   // Pipe capture (stdout string) is unreliable on some agents; stream JSON straight to the file.
   const outFd = fs.openSync(jsonPath, "w");
   try {
@@ -245,7 +244,7 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
       "plan.json is empty after terraform show -json (file redirect produced no data).",
     );
   }
-  console.log(`##vso[artifact.upload containerfolder=${staging};artifactname=${artifactName}]${staging}`);
+  console.log(`##vso[artifact.upload containerfolder=plan;artifactname=${artifactName}]${staging}`);
 }
 
 async function main(): Promise<void> {
