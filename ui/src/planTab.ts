@@ -389,51 +389,68 @@ async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await SDK.init({ loaded: false, applyTheme: true });
-  await SDK.ready();
+  const startTime = performance.now();
+  const timeoutMs = 30000;
+  const timeoutHandle = setTimeout(() => {
+    const app = document.getElementById("app");
+    if (app) {
+      app.innerHTML = `<div class="error"><strong>Loading timeout</strong><p>The Terraform plan is taking longer than expected to load. This usually means:</p><ul><li>The artifact is large or network is slow</li><li>Azure DevOps services are under heavy load</li><li>Try refreshing the page</li></ul></div>`;
+    }
+  }, timeoutMs);
 
-  const project = SDK.getWebContext().project;
-  if (!project?.name) {
-    throw new Error("Project context is not available.");
+  try {
+    await SDK.init({ loaded: false, applyTheme: true });
+    await SDK.ready();
+
+    const project = SDK.getWebContext().project;
+    if (!project?.name) {
+      throw new Error("Project context is not available.");
+    }
+    const buildId = await resolveBuildId();
+    const artifactName = resolveArtifactName();
+    console.log(`[Terraform] Resolved buildId=${buildId}, artifactName=${artifactName}, project=${project.name}`);
+
+    const buildClient = getClient(BuildRestClient);
+    const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
+    const artifactLoadTime = performance.now() - startTime;
+    console.log(`[Terraform] Loaded plan with ${(plan.resource_changes || []).length} resources in ${artifactLoadTime.toFixed(0)}ms`);
+
+    const app = document.getElementById("app");
+    if (!app) {
+      await SDK.notifyLoadFailed("Missing #app root element.");
+      return;
+    }
+
+    const meta = [
+      plan.terraform_version ? `Terraform ${escapeHtml(plan.terraform_version)}` : null,
+      plan.format_version ? `format ${escapeHtml(String(plan.format_version))}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    const diagramSource = buildMermaid(plan);
+
+    app.innerHTML = `
+      <div class="tf-header">
+        <h2>Infrastructure plan</h2>
+        <p class="muted">${meta || "Parsed from published plan artifact."}</p>
+        <p class="muted">Artifact: <code>${escapeHtml(artifactName)}</code></p>
+      </div>
+      <h3>Resource changes</h3>
+      ${renderTable(plan)}
+      <h3>Architecture sketch (by provider prefix)</h3>
+      <p class="muted">Grouped from <code>resource_changes</code>. Diagram loads after this page appears.</p>
+      <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering diagram…</p></div>
+    `;
+
+    clearTimeout(timeoutHandle);
+    await SDK.notifyLoadSucceeded();
+
+    void renderDiagramWhenReady(diagramSource);
+  } catch (err) {
+    clearTimeout(timeoutHandle);
+    throw err;
   }
-  const buildId = await resolveBuildId();
-  const artifactName = resolveArtifactName();
-  console.log(`[Terraform] Resolved buildId=${buildId}, artifactName=${artifactName}, project=${project.name}`);
-  const buildClient = getClient(BuildRestClient);
-  const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
-  console.log(`[Terraform] Successfully loaded plan with ${(plan.resource_changes || []).length} resource changes`);
-
-  const app = document.getElementById("app");
-  if (!app) {
-    await SDK.notifyLoadFailed("Missing #app root element.");
-    return;
-  }
-
-  const meta = [
-    plan.terraform_version ? `Terraform ${escapeHtml(plan.terraform_version)}` : null,
-    plan.format_version ? `format ${escapeHtml(String(plan.format_version))}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const diagramSource = buildMermaid(plan);
-
-  app.innerHTML = `
-    <div class="tf-header">
-      <h2>Infrastructure plan</h2>
-      <p class="muted">${meta || "Parsed from published plan artifact."}</p>
-      <p class="muted">Artifact: <code>${escapeHtml(artifactName)}</code></p>
-    </div>
-    <h3>Resource changes</h3>
-    ${renderTable(plan)}
-    <h3>Architecture sketch (by provider prefix)</h3>
-    <p class="muted">Grouped from <code>resource_changes</code>. Diagram loads after this page appears.</p>
-    <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering diagram…</p></div>
-  `;
-
-  await SDK.notifyLoadSucceeded();
-
-  void renderDiagramWhenReady(diagramSource);
 }
 
 void main().catch(async (err: unknown) => {
