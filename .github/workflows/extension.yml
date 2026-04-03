@@ -29,10 +29,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Bump patch version
+        id: bump
         run: |
           # Parse current version from vss-extension.json
           CURRENT_VERSION=$(grep '"version"' vss-extension.json | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/')
@@ -47,6 +50,7 @@ jobs:
           NEW_PATCH=$((PATCH + 1))
           NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
           echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
           # Update vss-extension.json
           sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/g" vss-extension.json
@@ -55,16 +59,18 @@ jobs:
           sed -i "s/\"Patch\": $PATCH/\"Patch\": $NEW_PATCH/g" tasks/Terraform/task.json
 
           # Verify changes
+          echo "=== Updated vss-extension.json ==="
           grep '"version"' vss-extension.json
+          echo "=== Updated task.json ==="
           grep '"Patch"' tasks/Terraform/task.json
 
       - name: Commit version bump
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Bump version for auto-publish"
-          commit_user_name: github-actions[bot]
-          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
-          file_pattern: vss-extension.json tasks/Terraform/task.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vss-extension.json tasks/Terraform/task.json
+          git commit -m "Bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
 
   build:
     needs: bump-version
@@ -80,6 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
