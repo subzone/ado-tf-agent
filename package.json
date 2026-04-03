@@ -1,0 +1,14 @@
+{
+  "name": "ado-tf-agent",
+  "private": true,
+  "description": "Azure DevOps extension: Terraform tasks + build results visualization",
+  "scripts": {
+    "build:task": "cd tasks/Terraform && npm ci && npm run build",
+    "build:ui": "cd ui && npm ci && npm run build",
+    "build": "npm run build:task && npm run build:ui",
+    "package": "npm run build && npx --yes tfx-cli extension create --manifest-globs vss-extension.json --output-path dist"
+  },
+  "devDependencies": {
+    "tfx-cli": "^0.21.1"
+  }
+}

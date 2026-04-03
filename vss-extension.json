@@ -1,0 +1,64 @@
+{
+  "manifestVersion": 1,
+  "id": "ado-tf-agent",
+  "version": "0.1.0",
+  "name": "ADO Terraform Agent",
+  "publisher": "subzone",
+  "description": "Terraform pipeline task (install, init, validate, plan, apply) with Azure/AWS/GCP remote state options, plus a build results tab for plan JSON and an architecture-style diagram.",
+  "public": true,
+  "categories": ["Azure Pipelines"],
+  "tags": ["Terraform", "IaC", "Plan", "Azure", "AWS", "GCP"],
+  "targets": [
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
+  ],
+  "icons": {
+    "default": "images/extension-icon.png"
+  },
+  "scopes": ["vso.build", "vso.build_execute"],
+  "content": {
+    "details": {
+      "path": "overview.md"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "uri": "https://github.com/your-org/ado-tf-agent"
+  },
+  "files": [
+    {
+      "path": "images",
+      "addressable": true
+    },
+    {
+      "path": "tasks/Terraform",
+      "addressable": false
+    },
+    {
+      "path": "ui/dist",
+      "addressable": true
+    }
+  ],
+  "contributions": [
+    {
+      "id": "terraform-task",
+      "type": "ms.vss-distributed-task.task",
+      "targets": ["ms.vss-distributed-task.tasks"],
+      "properties": {
+        "name": "tasks/Terraform"
+      }
+    },
+    {
+      "id": "terraform-plan-tab",
+      "type": "ms.vss-build-web.build-results-tab",
+      "description": "Visual Terraform plan and diagram from published plan.json artifact.",
+      "targets": ["ms.vss-build-web.build-results-view"],
+      "properties": {
+        "name": "Terraform",
+        "uri": "ui/dist/planTab.html",
+        "supportsTasks": ["b8f3a2c1-7d4e-4a9b-8f1c-3e5d7a9b2c4d"]
+      }
+    }
+  ]
+}

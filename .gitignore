@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.vsix
+tasks/Terraform/dist/
+ui/dist/
+.DS_Store
+*.log

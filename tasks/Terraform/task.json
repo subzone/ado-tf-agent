@@ -1,0 +1,232 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
+  "id": "b8f3a2c1-7d4e-4a9b-8f1c-3e5d7a9b2c4d",
+  "name": "Terraform",
+  "friendlyName": "Terraform (ADO TF Agent)",
+  "description": "Install Terraform, manage remote state backends (Azure, AWS, GCP), and run init, validate, plan, and apply. Optionally publish a JSON plan for the build results visualization tab.",
+  "helpMarkDown": "[Repository](https://github.com/your-org/ado-tf-agent) — After **Plan**, enable **Publish plan JSON artifact** and open the **Terraform** tab on the build summary.",
+  "category": "Deploy",
+  "author": "Your Team",
+  "visibility": ["Build", "Release"],
+  "demands": [],
+  "version": {
+    "Major": 0,
+    "Minor": 1,
+    "Patch": 0
+  },
+  "minimumAgentVersion": "2.206.1",
+  "instanceNameFormat": "Terraform $(command)",
+  "releaseNotes": "Initial preview: core commands, multi-cloud backends, plan artifact for UI.",
+  "groups": [
+    {
+      "name": "backendAzure",
+      "displayName": "Azure backend (azurerm)",
+      "isExpanded": true
+    },
+    {
+      "name": "backendAws",
+      "displayName": "AWS backend (s3)",
+      "isExpanded": true
+    },
+    {
+      "name": "backendGcp",
+      "displayName": "GCP backend (gcs)",
+      "isExpanded": true
+    },
+    {
+      "name": "planArtifact",
+      "displayName": "Plan visualization",
+      "isExpanded": true
+    }
+  ],
+  "inputs": [
+    {
+      "name": "command",
+      "type": "pickList",
+      "label": "Command",
+      "defaultValue": "plan",
+      "required": true,
+      "helpMarkDown": "**install** caches Terraform on the agent and prepends it to PATH. Other commands expect `terraform` on PATH or a prior install step in the same job.",
+      "options": {
+        "install": "install",
+        "init": "init",
+        "validate": "validate",
+        "plan": "plan",
+        "apply": "apply",
+        "show": "show"
+      }
+    },
+    {
+      "name": "workingDirectory",
+      "type": "filePath",
+      "label": "Terraform working directory",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Directory containing `.tf` files. Leave empty to use the agent default working directory."
+    },
+    {
+      "name": "terraformVersion",
+      "type": "string",
+      "label": "Terraform version (install only)",
+      "defaultValue": "1.7.5",
+      "required": false,
+      "visibleRule": "command = install"
+    },
+    {
+      "name": "backendType",
+      "type": "pickList",
+      "label": "Backend type (init only)",
+      "defaultValue": "local",
+      "required": false,
+      "visibleRule": "command = init",
+      "helpMarkDown": "Maps to `terraform init -backend-config=...` key/value pairs. Use **custom** to pass your own `-backend-config` file.",
+      "options": {
+        "local": "local (default / no remote config)",
+        "azurerm": "azurerm",
+        "s3": "s3",
+        "gcs": "gcs",
+        "custom": "custom (-backend-config=FILE)"
+      }
+    },
+    {
+      "name": "backendConfigFile",
+      "type": "filePath",
+      "label": "Backend config file (HCL or key=value)",
+      "defaultValue": "",
+      "required": false,
+      "visibleRule": "command = init && backendType = custom",
+      "helpMarkDown": "Path passed as multiple `-backend-config=file` entries if you list one file, or use **Additional arguments** for multiple `-backend-config=...`."
+    },
+    {
+      "name": "azureResourceGroup",
+      "type": "string",
+      "label": "Azure resource group",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAzure",
+      "visibleRule": "command = init && backendType = azurerm"
+    },
+    {
+      "name": "azureStorageAccount",
+      "type": "string",
+      "label": "Azure storage account",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAzure",
+      "visibleRule": "command = init && backendType = azurerm"
+    },
+    {
+      "name": "azureContainer",
+      "type": "string",
+      "label": "Azure blob container",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAzure",
+      "visibleRule": "command = init && backendType = azurerm"
+    },
+    {
+      "name": "azureStateKey",
+      "type": "string",
+      "label": "State blob key",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAzure",
+      "visibleRule": "command = init && backendType = azurerm"
+    },
+    {
+      "name": "awsBucket",
+      "type": "string",
+      "label": "S3 bucket",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAws",
+      "visibleRule": "command = init && backendType = s3"
+    },
+    {
+      "name": "awsKey",
+      "type": "string",
+      "label": "S3 state key",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAws",
+      "visibleRule": "command = init && backendType = s3"
+    },
+    {
+      "name": "awsRegion",
+      "type": "string",
+      "label": "AWS region",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAws",
+      "visibleRule": "command = init && backendType = s3"
+    },
+    {
+      "name": "awsDynamoDbTable",
+      "type": "string",
+      "label": "DynamoDB lock table (optional)",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendAws",
+      "visibleRule": "command = init && backendType = s3"
+    },
+    {
+      "name": "gcpBucket",
+      "type": "string",
+      "label": "GCS bucket",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendGcp",
+      "visibleRule": "command = init && backendType = gcs"
+    },
+    {
+      "name": "gcpPrefix",
+      "type": "string",
+      "label": "GCS prefix (optional)",
+      "defaultValue": "",
+      "required": false,
+      "groupName": "backendGcp",
+      "visibleRule": "command = init && backendType = gcs"
+    },
+    {
+      "name": "planFile",
+      "type": "string",
+      "label": "Plan file name",
+      "defaultValue": "tfplan",
+      "required": false,
+      "visibleRule": "command = plan || command = apply || command = show",
+      "helpMarkDown": "Binary plan file for **plan** (`-out`), **apply**, and **show**."
+    },
+    {
+      "name": "publishPlanArtifact",
+      "type": "boolean",
+      "label": "Publish plan JSON artifact",
+      "defaultValue": "true",
+      "required": false,
+      "groupName": "planArtifact",
+      "visibleRule": "command = plan",
+      "helpMarkDown": "Runs `terraform show -json` after a successful plan and uploads artifact **terraform-plan** for the Terraform build tab."
+    },
+    {
+      "name": "planArtifactName",
+      "type": "string",
+      "label": "Plan artifact name",
+      "defaultValue": "terraform-plan",
+      "required": false,
+      "groupName": "planArtifact",
+      "visibleRule": "command = plan"
+    },
+    {
+      "name": "additionalArguments",
+      "type": "string",
+      "label": "Additional arguments",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Appended to the Terraform command line (e.g. `-var-file=prod.tfvars -lock=false`)."
+    }
+  ],
+  "execution": {
+    "Node20_1": {
+      "target": "dist/index.js"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "terraform-pipeline-task",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "dependencies": {
+    "azure-pipelines-task-lib": "^5.0.0",
+    "azure-pipelines-tool-lib": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0"
+  }
+}

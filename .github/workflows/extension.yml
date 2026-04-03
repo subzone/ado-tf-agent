@@ -1,0 +1,75 @@
+# Builds the .vsix on every push/PR; publishes to the Visual Studio Marketplace when you
+# push a version tag (v*) or run the workflow manually with publish enabled.
+#
+# Required repo secret for publish:
+#   AZURE_DEVOPS_EXT_TOKEN — Azure DevOps PAT with "Marketplace (Manage)" scope
+#   https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate
+
+name: Extension
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish VSIX to Marketplace after build
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Package extension (VSIX)
+        run: npm run package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ado-tf-agent-vsix
+          path: dist/*.vsix
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    steps:
+      - name: Download VSIX from build
+        uses: actions/download-artifact@v4
+        with:
+          name: ado-tf-agent-vsix
+          path: dist
+
+      - name: Publish to Visual Studio Marketplace
+        env:
+          TOKEN: ${{ secrets.AZURE_DEVOPS_EXT_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Missing secret AZURE_DEVOPS_EXT_TOKEN (PAT with Marketplace Manage scope)."
+            exit 1
+          fi
+          shopt -s nullglob
+          vsix=(dist/*.vsix)
+          if [ "${#vsix[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .vsix in dist/, found: ${#vsix[@]}"
+            exit 1
+          fi
+          npx --yes tfx-cli@0.21.1 extension publish --vsix "${vsix[0]}" --token "${TOKEN}"
