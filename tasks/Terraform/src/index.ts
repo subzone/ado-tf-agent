@@ -1,6 +1,7 @@
 import * as tl from "azure-pipelines-task-lib/task";
 import * as tr from "azure-pipelines-task-lib/toolrunner";
 import * as tc from "azure-pipelines-tool-lib/tool";
+import { spawnSync } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
@@ -215,30 +216,29 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
   const staging = path.join(tl.getVariable("Agent.TempDirectory") || os.tmpdir(), "tf-plan-publish");
   fs.mkdirSync(staging, { recursive: true });
   const jsonPath = path.join(staging, "plan.json");
-  const runner = terraformTool();
-  runner.arg("show");
-  runner.arg("-json");
-  runner.arg(planFile);
+  const tf = tl.which("terraform", true);
   const extra = parseExtraArgs(tl.getInput("additionalArguments") || "");
-  for (const a of extra) {
-    runner.arg(a);
-  }
-  let json = "";
-  const code = await runner.exec({
+  const args = ["show", "-json", planFile, ...extra];
+  const result = spawnSync(tf, args, {
     cwd,
-    listeners: {
-      stdout: (data: Buffer) => {
-        json += data.toString();
-      },
-    },
-  } as tr.IExecOptions);
-  if (code !== 0) {
-    throw new Error(`terraform show -json failed with exit code ${code}`);
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const errTail = ((result.stderr || "") + (result.stdout || "")).trim().slice(0, 2000);
+    throw new Error(`terraform show -json failed with exit code ${result.status}. ${errTail}`);
+  }
+  const json = result.stdout ?? "";
+  if (!json.trim()) {
+    throw new Error(
+      "plan.json is empty after terraform show -json (stdout was not captured).",
+    );
   }
   fs.writeFileSync(jsonPath, json, "utf8");
-  if (!json.trim()) {
-    throw new Error("plan.json is empty after terraform show -json.");
-  }
   console.log(`##vso[artifact.upload containerfolder=${staging};artifactname=${artifactName}]${staging}`);
 }
 

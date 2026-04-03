@@ -54,7 +54,7 @@ npm install
 npm run package
 ```
 
-This produces `dist/subzone.ado-tf-agent-0.1.0.vsix`.
+This produces `dist/subzone.ado-tf-agent-0.1.1.vsix` (version follows `vss-extension.json`).
 
 ## Build and publish from GitHub Actions
 
