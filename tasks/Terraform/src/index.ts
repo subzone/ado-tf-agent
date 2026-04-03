@@ -219,26 +219,32 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
   const tf = tl.which("terraform", true);
   const extra = parseExtraArgs(tl.getInput("additionalArguments") || "");
   const args = ["show", "-json", planFile, ...extra];
-  const result = spawnSync(tf, args, {
-    cwd,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-    windowsHide: true,
-  });
-  if (result.error) {
-    throw result.error;
+  // Pipe capture (stdout string) is unreliable on some agents; stream JSON straight to the file.
+  const outFd = fs.openSync(jsonPath, "w");
+  try {
+    const result = spawnSync(tf, args, {
+      cwd,
+      stdio: ["ignore", outFd, "pipe"],
+      windowsHide: true,
+      maxBuffer: 64 * 1024 * 1024,
+      encoding: "utf8",
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      const errTail = (result.stderr || "").trim().slice(0, 2000);
+      throw new Error(`terraform show -json failed with exit code ${result.status}. ${errTail}`);
+    }
+  } finally {
+    fs.closeSync(outFd);
   }
-  if (result.status !== 0) {
-    const errTail = ((result.stderr || "") + (result.stdout || "")).trim().slice(0, 2000);
-    throw new Error(`terraform show -json failed with exit code ${result.status}. ${errTail}`);
-  }
-  const json = result.stdout ?? "";
+  const json = fs.readFileSync(jsonPath, "utf8");
   if (!json.trim()) {
     throw new Error(
-      "plan.json is empty after terraform show -json (stdout was not captured).",
+      "plan.json is empty after terraform show -json (file redirect produced no data).",
     );
   }
-  fs.writeFileSync(jsonPath, json, "utf8");
   console.log(`##vso[artifact.upload containerfolder=${staging};artifactname=${artifactName}]${staging}`);
 }
 
