@@ -1,6 +1,8 @@
 # Builds the .vsix on every push/PR; publishes to the Visual Studio Marketplace when you
 # push a version tag (v*) or run the workflow manually with publish enabled.
 #
+# Auto-publishes to marketplace on every push to main by incrementing the patch version.
+#
 # Required repo secret for publish:
 #   AZURE_DEVOPS_EXT_TOKEN — Azure DevOps PAT with "Marketplace (Manage)" scope
 #   https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate
@@ -22,10 +24,63 @@ on:
         default: false
 
 jobs:
-  build:
+  bump-version:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Bump patch version
+        run: |
+          # Parse current version from vss-extension.json
+          CURRENT_VERSION=$(grep '"version"' vss-extension.json | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Split version into parts
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          echo "New version: $NEW_VERSION"
+
+          # Update vss-extension.json
+          sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/g" vss-extension.json
+
+          # Update task.json
+          sed -i "s/\"Patch\": $PATCH/\"Patch\": $NEW_PATCH/g" tasks/Terraform/task.json
+
+          # Verify changes
+          grep '"version"' vss-extension.json
+          grep '"Patch"' tasks/Terraform/task.json
+
+      - name: Commit version bump
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Bump version for auto-publish"
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          file_pattern: vss-extension.json tasks/Terraform/task.json
+
+  build:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    if: |
+      always() && (
+        github.event_name == 'pull_request' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.bump-version.result == 'success')
+      )
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -73,3 +128,4 @@ jobs:
             exit 1
           fi
           npx --yes tfx-cli@0.21.1 extension publish --vsix "${vsix[0]}" --token "${TOKEN}"
+
