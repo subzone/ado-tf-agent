@@ -398,8 +398,10 @@ async function main(): Promise<void> {
   }
   const buildId = await resolveBuildId();
   const artifactName = resolveArtifactName();
+  console.log(`[Terraform] Resolved buildId=${buildId}, artifactName=${artifactName}, project=${project.name}`);
   const buildClient = getClient(BuildRestClient);
   const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
+  console.log(`[Terraform] Successfully loaded plan with ${(plan.resource_changes || []).length} resource changes`);
 
   const app = document.getElementById("app");
   if (!app) {
