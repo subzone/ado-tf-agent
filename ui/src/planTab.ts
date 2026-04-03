@@ -105,6 +105,100 @@ async function loadPlanJsonFromArtifact(
   return JSON.parse(text) as TerraformPlanJson;
 }
 
+/** Azure DevOps build pages use `?buildId=` on the parent URL; the iframe URL often has none. */
+function parseBuildIdFromAnyUrl(urlString: string): number | undefined {
+  if (!urlString || !urlString.trim()) {
+    return undefined;
+  }
+  try {
+    const url = new URL(urlString, "https://dev.azure.com");
+    for (const key of ["buildId", "buildID"]) {
+      const v = url.searchParams.get(key);
+      if (v) {
+        const n = parseInt(v, 10);
+        if (!Number.isNaN(n)) {
+          return n;
+        }
+      }
+    }
+    const pathMatch = url.pathname.match(/\/results\/(\d+)(?:\/|$)/i);
+    if (pathMatch) {
+      const n = parseInt(pathMatch[1], 10);
+      if (!Number.isNaN(n)) {
+        return n;
+      }
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function extractBuildIdFromTextBlob(blob: string): number | undefined {
+  if (!blob) {
+    return undefined;
+  }
+  const patterns = [/"buildId"\s*:\s*(\d+)/gi, /"idBuild"\s*:\s*(\d+)/gi, /[?&#]buildId=(\d+)/gi];
+  for (const re of patterns) {
+    for (const m of blob.matchAll(re)) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n) && n > 0) {
+        return n;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Handshake JSON often nests buildId even when getConfiguration() looks empty at the top level. */
+function parseBuildIdFromHandshakeJson(): number | undefined {
+  const parts: string[] = [];
+  try {
+    parts.push(JSON.stringify(SDK.getPageContext()));
+  } catch {
+    /* before ready — should not happen */
+  }
+  try {
+    parts.push(JSON.stringify(SDK.getConfiguration()));
+  } catch {
+    /* ignore */
+  }
+  return extractBuildIdFromTextBlob(parts.join("\n"));
+}
+
+function parseBuildIdFromReferrer(): number | undefined {
+  return document.referrer ? parseBuildIdFromAnyUrl(document.referrer) : undefined;
+}
+
+/** Walk parent windows until cross-origin; Azure sometimes embeds the tab one level under the build page. */
+function parseBuildIdFromAncestorWindows(): number | undefined {
+  let w: Window | null = window;
+  for (let depth = 0; depth < 12 && w; depth++) {
+    try {
+      const href = w.location.href;
+      const fromUrl = parseBuildIdFromAnyUrl(href);
+      if (fromUrl !== undefined) {
+        return fromUrl;
+      }
+      const fromBlob = extractBuildIdFromTextBlob(href);
+      if (fromBlob !== undefined) {
+        return fromBlob;
+      }
+    } catch {
+      /* cross-origin */
+    }
+    try {
+      if (!w.parent || w.parent === w) {
+        break;
+      }
+      w = w.parent;
+    } catch {
+      break;
+    }
+  }
+  return undefined;
+}
+
 function parseBuildIdFromWindow(): number | undefined {
   const tryParams = (raw: string): number | undefined => {
     const q = raw.startsWith("?") || raw.startsWith("#") ? raw.slice(1) : raw;
@@ -160,28 +254,102 @@ function resolveBuildIdFromConfiguration(): number {
     }
   }
   throw new Error(
-    "Could not resolve build id. The build results host did not provide configuration; ensure you open this tab from a completed pipeline run.",
+    "Could not resolve build id. Open **Pipelines → Runs → select one finished run → Summary → Terraform**. This tab does not run on the project Dashboard or the pipeline list (there is no single build there). Install the latest ADO Terraform Agent if the problem continues.",
   );
 }
 
-/** `getConfiguration()` is often empty here; use the official build page service first. */
-async function resolveBuildId(): Promise<number> {
+async function tryBuildIdFromPageDataService(): Promise<number | undefined> {
   try {
     const buildPageService = await SDK.getService<IBuildPageDataService>(
       BuildServiceIds.BuildPageDataService,
     );
-    const pageData = buildPageService.getBuildPageData();
-    const id = pageData?.build?.id;
-    if (typeof id === "number" && !Number.isNaN(id)) {
-      return id;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const pageData = buildPageService.getBuildPageData();
+      const id = pageData?.build?.id;
+      if (typeof id === "number" && !Number.isNaN(id)) {
+        return id;
+      }
+      await new Promise((r) => setTimeout(r, 100));
     }
   } catch {
-    /* Service not registered in this host — fall through. */
+    /* service missing */
+  }
+  return undefined;
+}
+
+/** Some hosts expose the current build only through this callback. */
+async function tryBuildIdFromOnBuildChanged(): Promise<number | undefined> {
+  const cfg = SDK.getConfiguration() as {
+    onBuildChanged?: (cb: (build: { id?: number }) => void) => void;
+  };
+  if (typeof cfg.onBuildChanged !== "function") {
+    return undefined;
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (id: number | undefined) => {
+      if (settled || id === undefined || Number.isNaN(id)) {
+        return;
+      }
+      settled = true;
+      resolve(id);
+    };
+    try {
+      cfg.onBuildChanged!((build) => {
+        finish(typeof build?.id === "number" ? build.id : undefined);
+      });
+    } catch {
+      resolve(undefined);
+      return;
+    }
+    setTimeout(() => {
+      if (!settled) {
+        resolve(undefined);
+      }
+    }, 3000);
+  });
+}
+
+/**
+ * Resolve build id from handshake JSON, URLs (iframe, referrer, ancestors), BuildPageDataService,
+ * and host callbacks. Project Dashboard has no build context — use a single run’s Summary page.
+ */
+async function resolveBuildId(): Promise<number> {
+  const fromHandshake = parseBuildIdFromHandshakeJson();
+  if (fromHandshake !== undefined) {
+    return fromHandshake;
   }
 
-  const fromUrl = parseBuildIdFromWindow();
-  if (fromUrl !== undefined) {
-    return fromUrl;
+  const fromSurfaces = extractBuildIdFromTextBlob(
+    [window.location.href, document.documentURI || "", document.referrer || ""].join("\n"),
+  );
+  if (fromSurfaces !== undefined) {
+    return fromSurfaces;
+  }
+
+  const fromAncestors = parseBuildIdFromAncestorWindows();
+  if (fromAncestors !== undefined) {
+    return fromAncestors;
+  }
+
+  const fromRef = parseBuildIdFromReferrer();
+  if (fromRef !== undefined) {
+    return fromRef;
+  }
+
+  const fromWin = parseBuildIdFromWindow();
+  if (fromWin !== undefined) {
+    return fromWin;
+  }
+
+  const fromService = await tryBuildIdFromPageDataService();
+  if (fromService !== undefined) {
+    return fromService;
+  }
+
+  const fromCb = await tryBuildIdFromOnBuildChanged();
+  if (fromCb !== undefined) {
+    return fromCb;
   }
 
   return resolveBuildIdFromConfiguration();
