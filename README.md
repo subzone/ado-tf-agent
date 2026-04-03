@@ -8,6 +8,19 @@ Azure DevOps extension that adds a **Terraform** pipeline task and a **Terraform
 - An [Azure DevOps publisher](https://learn.microsoft.com/azure/devops/extend/publish/overview) (create one in the [Visual Studio Marketplace manage portal](https://marketplace.visualstudio.com/manage) if you do not have one)
 - [Personal access token](https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate) with **Marketplace (Manage)** scope for publishing
 
+## Test sample (Terraform + pipeline)
+
+- **`infra/`** — minimal root module using the **null** provider only (no Azure/AWS/GCP credentials). Local backend by default.
+- **`azure-pipelines.yml`** — installs the extension task **subzone.ado-tf-agent.terraform-task@0**, then runs init → validate → plan (with **Publish plan JSON artifact**) → apply.
+
+**In Azure DevOps:** install the extension for your organization, create a pipeline from this repo using `azure-pipelines.yml`, and run it. After **Plan**, open the completed build and select the **Terraform** tab to view the diagram.
+
+**Locally (without the extension):**
+
+```bash
+cd infra && terraform init -input=false && terraform validate && terraform plan -out=tfplan
+```
+
 ## Configure the manifest
 
 1. Confirm `publisher` in `vss-extension.json` (currently **subzone**).

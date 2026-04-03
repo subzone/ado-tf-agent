@@ -1,0 +1,55 @@
+# Azure DevOps pipeline for subzone.ado-tf-agent (install → init → validate → plan → apply).
+# Prerequisite: install the extension from Marketplace or upload the VSIX for org **subzone**
+# (publisher id). Task reference: subzone.ado-tf-agent.terraform-task@0
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  tfWorkingDirectory: infra
+  terraformVersion: 1.7.5
+
+steps:
+  - checkout: self
+    displayName: Checkout repository
+
+  - task: subzone.ado-tf-agent.terraform-task@0
+    displayName: Install Terraform
+    inputs:
+      command: install
+      terraformVersion: $(terraformVersion)
+
+  - task: subzone.ado-tf-agent.terraform-task@0
+    displayName: Terraform init (local state)
+    inputs:
+      command: init
+      workingDirectory: $(tfWorkingDirectory)
+      backendType: local
+
+  - task: subzone.ado-tf-agent.terraform-task@0
+    displayName: Terraform validate
+    inputs:
+      command: validate
+      workingDirectory: $(tfWorkingDirectory)
+
+  - task: subzone.ado-tf-agent.terraform-task@0
+    displayName: Terraform plan (publishes plan.json for Terraform tab)
+    inputs:
+      command: plan
+      workingDirectory: $(tfWorkingDirectory)
+      planFile: tfplan
+      publishPlanArtifact: true
+      planArtifactName: terraform-plan
+
+  - task: subzone.ado-tf-agent.terraform-task@0
+    displayName: Terraform apply (saved plan)
+    inputs:
+      command: apply
+      workingDirectory: $(tfWorkingDirectory)
+      planFile: tfplan
