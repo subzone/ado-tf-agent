@@ -200,8 +200,10 @@ async function main(): Promise<void> {
   if (!app) return;
 
   try {
-    // Register the onBuildChanged callback via SDK configuration BEFORE init.
-    // ADO calls this callback with the current build object once the host is ready.
+    await SDK.init({ loaded: false, applyTheme: true });
+    await SDK.ready();
+
+    // Register onBuildChanged callback after init — ADO will still fire it.
     const buildReady = new Promise<number>((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error("Timed out waiting for build context from Azure DevOps host.")),
@@ -221,8 +223,6 @@ async function main(): Promise<void> {
       });
     });
 
-    await SDK.init({ loaded: false, applyTheme: true });
-    await SDK.ready();
     await SDK.notifyLoadSucceeded();
     console.log("[Terraform] ✓ SDK handshake complete, waiting for onBuildChanged...");
 
