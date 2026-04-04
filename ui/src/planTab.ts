@@ -33,8 +33,7 @@ function escapeHtml(s: string): string {
 }
 
 function toNodeId(seed: string, index: number): string {
-  const h = seed.replace(/[^a-zA-Z0-9]/g, "_");
-  return `n_${index}_${h.slice(0, 80)}`;
+  return `n_${index}_${seed.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 80)}`;
 }
 
 function escapeMermaidLabel(text: string): string {
@@ -47,9 +46,7 @@ function buildMermaid(plan: TerraformPlanJson): string {
   for (const rc of changes) {
     const t = rc.type || "unknown";
     const prov = t.includes("_") ? t.split("_")[0]! : "misc";
-    if (!groups.has(prov)) {
-      groups.set(prov, []);
-    }
+    if (!groups.has(prov)) groups.set(prov, []);
     groups.get(prov)!.push(rc);
   }
   const lines: string[] = ["flowchart TB"];
@@ -60,8 +57,7 @@ function buildMermaid(plan: TerraformPlanJson): string {
       const addr = rc.address || `${prov}.${idx}`;
       const id = toNodeId(addr, gi * 1000 + idx);
       const actions = (rc.change?.actions || []).join(",");
-      const label = `${escapeMermaidLabel(addr)}\\n${escapeMermaidLabel(actions || "unknown")}`;
-      lines.push(`    ${id}["${label}"]`);
+      lines.push(`    ${id}["${escapeMermaidLabel(addr)}\\n${escapeMermaidLabel(actions || "unknown")}"]`);
     });
     lines.push("  end");
     gi++;
@@ -72,9 +68,7 @@ function buildMermaid(plan: TerraformPlanJson): string {
 function renderTable(plan: TerraformPlanJson): string {
   const rows = (plan.resource_changes || []).map((rc) => {
     const actions = (rc.change?.actions || []).join(", ");
-    return `<tr><td>${escapeHtml(rc.address || "")}</td><td>${escapeHtml(rc.type || "")}</td><td>${escapeHtml(
-      actions,
-    )}</td></tr>`;
+    return `<tr><td>${escapeHtml(rc.address || "")}</td><td>${escapeHtml(rc.type || "")}</td><td>${escapeHtml(actions)}</td></tr>`;
   });
   return `
     <table class="tf-table">
@@ -88,7 +82,7 @@ async function loadPlanJson(
   project: string,
   buildId: number,
 ): Promise<TerraformPlanJson> {
-  console.log(`[Terraform] Fetching attachments for build ${buildId}, type=${TF_PLAN_ATTACHMENT_TYPE}...`);
+  console.log(`[Terraform] Fetching attachments for build ${buildId}, type=${TF_PLAN_ATTACHMENT_TYPE}`);
   const attachments = await buildClient.getAttachments(project, buildId, TF_PLAN_ATTACHMENT_TYPE);
   console.log(`[Terraform] Found ${attachments.length} attachment(s)`);
 
@@ -99,13 +93,12 @@ async function loadPlanJson(
   }
 
   const att = attachments[0];
-  // The _links.self.href gives us the direct download URL for the attachment content
   const url = (att as unknown as { _links?: { self?: { href?: string } } })?._links?.self?.href;
   if (!url) {
     throw new Error("Attachment found but has no download URL.");
   }
 
-  console.log(`[Terraform] Downloading attachment from: ${url.substring(0, 80)}...`);
+  console.log(`[Terraform] Downloading attachment...`);
   const token = await SDK.getAccessToken();
   const resp = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -119,39 +112,7 @@ async function loadPlanJson(
   return JSON.parse(text) as TerraformPlanJson;
 }
 
-/** Build results tabs receive the build via SDK configuration. */
-function resolveBuildId(): number {
-  const cfg = SDK.getConfiguration() as Record<string, unknown>;
-  console.log("[Terraform] SDK configuration keys:", Object.keys(cfg).join(", "));
-
-  const fromObj = (o: unknown): number | undefined => {
-    if (o && typeof o === "object" && "id" in o) {
-      const id = (o as { id: unknown }).id;
-      return typeof id === "number" && !Number.isNaN(id) ? id : undefined;
-    }
-    return undefined;
-  };
-
-  for (const key of ["build", "buildDetails"]) {
-    const id = fromObj(cfg[key]);
-    if (id !== undefined) return id;
-  }
-  if (typeof cfg.buildId === "number") return cfg.buildId;
-
-  // Fallback: parse from the full config JSON blob
-  const blob = JSON.stringify(cfg);
-  const m = blob.match(/"(?:build)?[Ii]d"\s*:\s*(\d+)/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (!Number.isNaN(n) && n > 0) return n;
-  }
-
-  throw new Error(
-    "Could not resolve build id. Open this tab from Pipelines → Runs → select a finished run → Terraform tab.",
-  );
-}
-
-async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
+async function renderDiagram(diagramSource: string): Promise<void> {
   const host = document.getElementById("tf-diagram-host");
   if (!host) return;
   try {
@@ -171,40 +132,22 @@ async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
     console.log("[Terraform] ✓ Diagram rendered");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[Terraform] Diagram failed:", msg);
-    host.innerHTML = `<p class="muted">Diagram could not be rendered: ${escapeHtml(msg)}</p><pre class="tf-mermaid-fallback">${escapeHtml(
-      diagramSource,
-    )}</pre>`;
+    host.innerHTML = `<p class="muted">Diagram could not be rendered: ${escapeHtml(msg)}</p><pre class="tf-mermaid-fallback">${escapeHtml(diagramSource)}</pre>`;
   }
 }
 
-async function main(): Promise<void> {
-  const app = document.getElementById("app");
-  if (!app) return;
-
-  // Phase 1: SDK handshake — must complete quickly or ADO kills the iframe
-  try {
-    await SDK.init({ loaded: false, applyTheme: true });
-    await SDK.ready();
-    await SDK.notifyLoadSucceeded();
-    console.log("[Terraform] ✓ SDK handshake complete");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    app.innerHTML = `<div class="error"><strong>SDK init failed</strong><p><code>${escapeHtml(msg)}</code></p></div>`;
-    try { await SDK.notifyLoadFailed(msg); } catch { /* ignore */ }
-    return;
-  }
-
-  // Phase 2: Load data (tab is already visible)
+/** Called when ADO provides the build context via onBuildChanged callback. */
+async function onBuildReady(buildId: number): Promise<void> {
+  const app = document.getElementById("app")!;
   try {
     const context = SDK.getWebContext();
     const project = context.project;
     if (!project?.name) {
-      throw new Error("Project context not available. Open this tab from a build run summary page.");
+      throw new Error("Project context not available.");
     }
 
-    const buildId = resolveBuildId();
     console.log(`[Terraform] buildId=${buildId}, project=${project.name}`);
+    app.innerHTML = `<p class="muted">Loading plan for build ${buildId}…</p>`;
 
     const buildClient = getClient(BuildRestClient);
     const plan = await loadPlanJson(buildClient, project.name, buildId);
@@ -231,7 +174,7 @@ async function main(): Promise<void> {
       <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering diagram…</p></div>
     `;
 
-    void renderDiagramWhenReady(diagramSource);
+    void renderDiagram(diagramSource);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : "";
@@ -252,10 +195,46 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
+async function main(): Promise<void> {
   const app = document.getElementById("app");
-  if (app) {
-    app.innerHTML = `<div class="error"><strong>Could not load plan</strong><p>${escapeHtml(message)}</p></div>`;
+  if (!app) return;
+
+  try {
+    // Register the onBuildChanged callback via SDK configuration BEFORE init.
+    // ADO calls this callback with the current build object once the host is ready.
+    const buildReady = new Promise<number>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Timed out waiting for build context from Azure DevOps host.")),
+        15000,
+      );
+
+      SDK.register(SDK.getContributionId(), {
+        onBuildChanged: (build: { id?: number }) => {
+          console.log("[Terraform] onBuildChanged fired:", JSON.stringify(build));
+          clearTimeout(timeout);
+          if (typeof build?.id === "number") {
+            resolve(build.id);
+          } else {
+            reject(new Error("onBuildChanged called but build.id is missing."));
+          }
+        },
+      });
+    });
+
+    await SDK.init({ loaded: false, applyTheme: true });
+    await SDK.ready();
+    await SDK.notifyLoadSucceeded();
+    console.log("[Terraform] ✓ SDK handshake complete, waiting for onBuildChanged...");
+
+    const buildId = await buildReady;
+    await onBuildReady(buildId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[Terraform] FATAL:", msg);
+    app.innerHTML = `<div class="error"><strong>Could not load plan</strong><p><code>${escapeHtml(msg)}</code></p>
+      <p class="muted" style="margin-top: 8px;">Open this tab from a completed build run (Pipelines → Runs → select run → Terraform tab).</p></div>`;
+    try { await SDK.notifyLoadFailed(msg); } catch { /* ignore */ }
   }
-});
+}
+
+void main();
