@@ -9,5 +9,18 @@
     <div id="app">
       <p class="muted">Loading Terraform plan…</p>
     </div>
+    <script>
+      // ADO extension iframes get a global AMD require() from the host.
+      // We must load our bundle through it so we share the host's SDK instance.
+      var defined = typeof define === "function" && define.amd;
+      if (defined) {
+        require(["planTab.bundle"], function () {});
+      } else {
+        // Fallback: load as plain script (local dev)
+        var s = document.createElement("script");
+        s.src = "planTab.bundle.js";
+        document.body.appendChild(s);
+      }
+    </script>
   </body>
 </html>

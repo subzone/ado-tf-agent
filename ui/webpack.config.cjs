@@ -1,11 +1,12 @@
 const path = require("path");
-const HtmlWebpackPlugin = require("html-webpack-plugin");
+const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
-  entry: "./src/planTab.ts",
+  entry: { "planTab.bundle": "./src/planTab.ts" },
   output: {
-    filename: "planTab.bundle.js",
+    filename: "[name].js",
     path: path.resolve(__dirname, "dist"),
+    libraryTarget: "amd",
     clean: true,
   },
   resolve: {
@@ -15,10 +16,7 @@ module.exports = {
     rules: [
       {
         test: /\.ts$/,
-        use: {
-          loader: "ts-loader",
-          options: { transpileOnly: true },
-        },
+        use: { loader: "ts-loader", options: { transpileOnly: true } },
         exclude: /node_modules/,
       },
       {
@@ -28,12 +26,12 @@ module.exports = {
     ],
   },
   plugins: [
-    new HtmlWebpackPlugin({
-      template: "./src/planTab.html",
-      filename: "planTab.html",
-      inject: "body",
-      scriptLoading: "blocking",
+    new CopyPlugin({
+      patterns: [{ from: "src/planTab.html", to: "planTab.html" }],
     }),
   ],
-  externals: {},
+  externals: [
+    /^azure-devops-extension-sdk(\/.*)?$/,
+    /^azure-devops-extension-api(\/.*)?$/,
+  ],
 };
