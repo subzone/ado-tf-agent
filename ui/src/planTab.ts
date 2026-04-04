@@ -393,40 +393,58 @@ async function main(): Promise<void> {
   const timeoutMs = 30000;
   const app = document.getElementById("app");
 
+  if (!app) {
+    console.error("[Terraform] FATAL: Missing #app root element.");
+    return;
+  }
+
   const timeoutHandle = setTimeout(() => {
-    if (app) {
-      app.innerHTML = `<div class="error"><strong>Loading timeout</strong><p>The Terraform plan is taking longer than expected to load. This usually means:</p><ul><li>The artifact is large or network is slow</li><li>Azure DevOps services are under heavy load</li><li>Try refreshing the page</li></ul></div>`;
-    }
+    app.innerHTML = `<div class="error"><strong>Loading timeout (30s)</strong><p>The Terraform plan is taking too long to load. This usually means:</p><ul><li>The artifact is very large</li><li>Network is slow</li><li>Azure DevOps services are under heavy load</li></ul><p><strong>Debug info:</strong> Check browser DevTools → Console for detailed logs.</p></div>`;
   }, timeoutMs);
 
   try {
-    if (!app) {
-      throw new Error("Missing #app root element.");
-    }
+    console.log("[Terraform] Starting planTab initialization...");
 
     // Initialize SDK and get context
     try {
       await SDK.init({ loaded: false, applyTheme: true });
+      console.log("[Terraform] SDK.init() completed");
     } catch (e) {
-      // SDK already initialized warning is harmless
-      console.warn("[Terraform] SDK init warning:", e instanceof Error ? e.message : String(e));
+      // "SDK already loaded" is expected and harmless
+      console.warn("[Terraform] SDK.init warning (expected):", e instanceof Error ? e.message : String(e));
     }
 
+    console.log("[Terraform] Calling SDK.ready()...");
     await SDK.ready();
+    console.log("[Terraform] SDK.ready() completed");
 
-    const project = SDK.getWebContext().project;
+    const context = SDK.getWebContext();
+    console.log("[Terraform] Web context:", { project: context.project?.name, collection: context.collection?.name });
+
+    const project = context.project;
     if (!project?.name) {
-      throw new Error("Project context is not available. Open this tab from a build run summary page (Pipelines → Run → Summary → Terraform tab).");
+      throw new Error("Project context is not available. This tab must be opened from a build run summary page (Pipelines → Run → Summary → Terraform tab).");
     }
 
+    console.log("[Terraform] Resolving build ID...");
     const buildId = await resolveBuildId();
-    const artifactName = resolveArtifactName();
-    console.log(`[Terraform] Resolved buildId=${buildId}, artifactName=${artifactName}, project=${project.name}`);
+    console.log("[Terraform] buildId resolved:", buildId);
 
+    const artifactName = resolveArtifactName();
+    console.log("[Terraform] artifactName:", artifactName);
+    console.log(`[Terraform] Context: buildId=${buildId}, artifact=${artifactName}, project=${project.name}`);
+
+    console.log("[Terraform] Creating BuildRestClient...");
     const buildClient = getClient(BuildRestClient);
+
+    console.log(`[Terraform] Fetching artifact from Azure DevOps...`);
+    const startArtifact = performance.now();
     const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
-    const artifactLoadTime = performance.now() - startTime;
-    console.log(`[Terraform] Loaded plan with ${(plan.resource_changes || []).length} resources in ${artifactLoadTime.toFixed(0)}ms`);
+    const artifactLoadTime = performance.now() - startArtifact;
+    console.log(`[Terraform] ✓ Artifact loaded in ${artifactLoadTime.toFixed(0)}ms, ${(plan.resource_changes || []).length} resources`);
+
+    const totalTime = performance.now() - startTime;
+    console.log(`[Terraform] Total init time: ${totalTime.toFixed(0)}ms`);
 
     const meta = [
       plan.terraform_version ? `Terraform ${escapeHtml(plan.terraform_version)}` : null,
@@ -435,13 +453,15 @@ async function main(): Promise<void> {
       .filter(Boolean)
       .join(" · ");
 
+    console.log("[Terraform] Building Mermaid diagram...");
     const diagramSource = buildMermaid(plan);
+    console.log("[Terraform] Diagram built, rendering content...");
 
     app.innerHTML = `
       <div class="tf-header">
         <h2>Infrastructure plan</h2>
         <p class="muted">${meta || "Parsed from published plan artifact."}</p>
-        <p class="muted">Artifact: <code>${escapeHtml(artifactName)}</code></p>
+        <p class="muted">Artifact: <code>${escapeHtml(artifactName)}</code> | Resources: <code>${(plan.resource_changes || []).length}</code></p>
       </div>
       <h3>Resource changes</h3>
       ${renderTable(plan)}
@@ -451,12 +471,36 @@ async function main(): Promise<void> {
     `;
 
     clearTimeout(timeoutHandle);
+    console.log("[Terraform] ✓ Content rendered successfully");
+
     await SDK.notifyLoadSucceeded();
+    console.log("[Terraform] ✓ SDK.notifyLoadSucceeded() called");
 
     void renderDiagramWhenReady(diagramSource);
   } catch (err) {
     clearTimeout(timeoutHandle);
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    console.error("[Terraform] FATAL ERROR:", message);
+    console.error("[Terraform] Stack:", stack);
+
+    app.innerHTML = `<div class="error">
+      <strong>Could not load plan</strong>
+      <p><code>${escapeHtml(message)}</code></p>
+      <details style="margin-top: 12px; cursor: pointer;">
+        <summary>Debug details (click to expand)</summary>
+        <pre style="background: #f3f2f1; padding: 8px; border-radius: 4px; font-size: 0.8rem; overflow: auto; max-height: 200px;">${escapeHtml(stack)}</pre>
+      </details>
+      <p class="muted" style="margin-top: 12px;">
+        <strong>Troubleshooting:</strong><br>
+        • Ensure you ran a <strong>Terraform plan</strong> step with <strong>publishPlanArtifact: true</strong><br>
+        • Ensure the artifact name matches <code>${escapeHtml(resolveArtifactName())}</code><br>
+        • Check the build logs for errors during the plan step<br>
+        • Open DevTools (F12) and check the Console tab for more details
+      </p>
+    </div>`;
+
+    await SDK.notifyLoadFailed(message);
   }
 }
 
