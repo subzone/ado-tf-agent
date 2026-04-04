@@ -1,5 +1,5 @@
 const path = require("path");
-const HtmlWebpackPlugin = require("html-webpack-plugin");
+const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
   entry: "./src/planTab.ts",
@@ -11,7 +11,6 @@ module.exports = {
   resolve: {
     extensions: [".ts", ".js"],
     alias: {
-      // Use the host's pre-loaded SDK instance if available, else fall back to bundled
       "azure-devops-extension-sdk": path.resolve(__dirname, "src/sdk-shim.js"),
     },
   },
@@ -29,12 +28,7 @@ module.exports = {
     ],
   },
   plugins: [
-    new HtmlWebpackPlugin({
-      template: "./src/planTab.html",
-      filename: "planTab.html",
-      inject: "body",
-      scriptLoading: "blocking",
-    }),
+    new CopyPlugin({ patterns: [{ from: "src/planTab.html", to: "planTab.html" }] }),
   ],
   externals: {},
 };
