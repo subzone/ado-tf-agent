@@ -39,9 +39,11 @@ Click any row to expand a full before/after diff:
 
 ## Dependency graph
 
-The diagram shows real resource relationships parsed from `configuration.references` in the plan JSON. Nodes are color-coded by action kind.
+The diagram shows real resource relationships parsed from `plan.configuration.root_module.resources[*].expressions` in the plan JSON, where nested `references` arrays identify dependencies. Nodes are color-coded by action kind.
 
 ![Dependency graph](images/dependency-graph.png)
+
+> If the graph has no edges, the `references` data may be absent from `expressions`. This is present in normal `terraform plan` output but may be missing with very old Terraform versions.
 
 ## Policy warnings
 

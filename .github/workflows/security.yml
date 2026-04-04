@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   secret-scan:
@@ -35,24 +34,26 @@ jobs:
             exit 1
           fi
 
-      - name: Block generic high-entropy tokens
+      - name: Block generic secret patterns
         run: |
-          if git grep -nE "(api_key|api_secret|access_token|secret_key|client_secret)\s*=\s*['\"][A-Za-z0-9+/]{20,}['\"]" \
-            -- . ':!*.md' ':!*.example' ':!*test*'; then
-            echo "::error::Potential hardcoded credential detected."
+          if git grep -nEi "(password|passwd|pwd|secret|token|api[_-]?key|auth[_-]?key)[[:space:]]*[:=][[:space:]]*['\"][^'\"]{8,}['\"]" \
+            -- . ':!*.md' ':!*.yml' ':!*.yaml'; then
+            echo "::error::Potential hardcoded secret detected."
             exit 1
           fi
 
       - name: Block Azure storage connection strings
         run: |
-          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" -- . ':!*.md' ':!.github/'; then
+          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" \
+            -- . ':!*.md' ':!.github/workflows/**'; then
             echo "::error::Potential Azure storage connection string detected."
             exit 1
           fi
 
       - name: Block GCP service account keys
         run: |
-          if git grep -nE '"type":\s*"service_account"' -- . ':!*.md'; then
+          if git grep -nE '"type":[[:space:]]*"service_account"' \
+            -- . ':!*.md' ':!.github/'; then
             echo "::error::Potential GCP service account key detected."
             exit 1
           fi

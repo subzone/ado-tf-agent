@@ -1,5 +1,7 @@
 # Changelog
 
+> Note: This page currently documents only the initial `1.0.0` release. Later in-repo versions are not listed here yet.
+
 ## 1.0.0 — 2025-04-04
 
 First production release.
@@ -16,4 +18,4 @@ First production release.
 - Color-coded change table with expandable attribute diffs
 - Filter and search by address, type, or action kind
 - Policy warnings: 12 built-in AWS and Azure security checks
-- Real dependency graph from `configuration.references`
+- Real dependency graph from `plan.configuration.root_module.resources[*].expressions` (nested `references`)
