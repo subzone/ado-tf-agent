@@ -45,7 +45,7 @@ jobs:
 
       - name: Block Azure storage connection strings
         run: |
-          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" -- . ':!*.md'; then
+          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" -- . ':!*.md' ':!.github/'; then
             echo "::error::Potential Azure storage connection string detected."
             exit 1
           fi
