@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "id": "ado-tf-agent",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "name": "ADO Terraform Agent",
   "publisher": "subzone",
   "description": "Terraform pipeline task with multi-cloud backends plus an interactive build results tab with color-coded diffs, expandable attribute changes, dependency graph, policy warnings and PR comments.",
