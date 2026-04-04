@@ -17,18 +17,42 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
 
       - name: Block private key markers
         run: |
           if git grep -nE "BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY" -- . ':!*.md'; then
-            echo "Potential private key material detected."
+            echo "::error::Potential private key material detected."
             exit 1
           fi
 
       - name: Block AWS access key patterns
         run: |
           if git grep -nE "AKIA[0-9A-Z]{16}" -- . ':!*.md'; then
-            echo "Potential AWS key detected."
+            echo "::error::Potential AWS access key detected."
+            exit 1
+          fi
+
+      - name: Block generic high-entropy tokens
+        run: |
+          if git grep -nE "(api_key|api_secret|access_token|secret_key|client_secret)\s*=\s*['\"][A-Za-z0-9+/]{20,}['\"]" \
+            -- . ':!*.md' ':!*.example' ':!*test*'; then
+            echo "::error::Potential hardcoded credential detected."
+            exit 1
+          fi
+
+      - name: Block Azure storage connection strings
+        run: |
+          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" -- . ':!*.md'; then
+            echo "::error::Potential Azure storage connection string detected."
+            exit 1
+          fi
+
+      - name: Block GCP service account keys
+        run: |
+          if git grep -nE '"type":\s*"service_account"' -- . ':!*.md'; then
+            echo "::error::Potential GCP service account key detected."
             exit 1
           fi

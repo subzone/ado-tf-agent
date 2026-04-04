@@ -20,7 +20,7 @@ Unacceptable behavior includes:
 
 ## Enforcement
 
-Instances of unacceptable behavior may be reported to **subzone@live.com**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of unacceptable behavior may be reported by opening a private issue at [github.com/subzone/ado-tf-agent/issues](https://github.com/subzone/ado-tf-agent/issues) or contacting the maintainers via GitHub.
 
 ## Attribution
 

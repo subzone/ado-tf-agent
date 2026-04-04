@@ -8,10 +8,6 @@ Security updates are provided for the latest release on `main`.
 
 Please **do not** open public GitHub issues for security vulnerabilities.
 
-Report privately by emailing **subzone@live.com** with:
-- A clear description of the vulnerability
-- Steps to reproduce
-- Impact assessment
-- Any proof-of-concept details
+Report privately by opening a [GitHub Security Advisory](https://github.com/subzone/ado-tf-agent/security/advisories/new) on the repository. This keeps the report private until a fix is ready.
 
-You will receive an acknowledgment as soon as possible.
+Alternatively, contact the maintainers via GitHub.

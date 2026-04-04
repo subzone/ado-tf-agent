@@ -16,4 +16,4 @@ See the full [Privacy Policy](https://github.com/subzone/ado-tf-agent/blob/main/
 
 ## Reporting vulnerabilities
 
-Do not open public issues for security vulnerabilities. Email **subzone@live.com** — see [SECURITY.md](https://github.com/subzone/ado-tf-agent/blob/main/SECURITY.md).
+Do not open public issues for security vulnerabilities. Use [GitHub Security Advisories](https://github.com/subzone/ado-tf-agent/security/advisories/new) to report privately — see [SECURITY.md](https://github.com/subzone/ado-tf-agent/blob/main/SECURITY.md).
