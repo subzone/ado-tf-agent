@@ -244,7 +244,7 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
       "plan.json is empty after terraform show -json (file redirect produced no data).",
     );
   }
-  console.log(`##vso[artifact.upload containerfolder=plan;artifactname=${artifactName}]${staging}`);
+  tl.uploadArtifact("plan", jsonPath, artifactName);
 }
 
 async function main(): Promise<void> {
