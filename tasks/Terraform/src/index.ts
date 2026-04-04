@@ -212,13 +212,14 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
   throw new Error(`Unknown terraform command: ${command}`);
 }
 
-async function publishPlanJson(cwd: string, planFile: string, artifactName: string): Promise<void> {
+const TF_PLAN_ATTACHMENT_TYPE = "terraform.plan.json";
+
+async function publishPlanJson(cwd: string, planFile: string): Promise<void> {
   const staging = path.join(tl.getVariable("Agent.TempDirectory") || os.tmpdir(), "tf-plan-publish");
   fs.mkdirSync(staging, { recursive: true });
   const jsonPath = path.join(staging, "plan.json");
   const tf = tl.which("terraform", true);
   const args = ["show", "-json", planFile];
-  // Pipe capture (stdout string) is unreliable on some agents; stream JSON straight to the file.
   const outFd = fs.openSync(jsonPath, "w");
   try {
     const result = spawnSync(tf, args, {
@@ -244,7 +245,9 @@ async function publishPlanJson(cwd: string, planFile: string, artifactName: stri
       "plan.json is empty after terraform show -json (file redirect produced no data).",
     );
   }
-  tl.uploadArtifact("plan", jsonPath, artifactName);
+  // Attach to the build timeline record so the UI tab can read it via getAttachments()
+  tl.addAttachment(TF_PLAN_ATTACHMENT_TYPE, "plan.json", jsonPath);
+  console.log(`plan.json attached as type=${TF_PLAN_ATTACHMENT_TYPE}`);
 }
 
 async function main(): Promise<void> {
@@ -285,8 +288,7 @@ async function main(): Promise<void> {
       const publish = tl.getInput("publishPlanArtifact") !== "false";
       if (publish) {
         const planFile = (tl.getInput("planFile") || "tfplan").trim();
-        const artifactName = (tl.getInput("planArtifactName") || "terraform-plan").trim();
-        await publishPlanJson(cwd, planFile, artifactName);
+        await publishPlanJson(cwd, planFile);
       }
       tl.setResult(tl.TaskResult.Succeeded, "terraform plan completed.");
       return;

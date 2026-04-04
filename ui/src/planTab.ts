@@ -1,14 +1,9 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { getClient } from "azure-devops-extension-api/Common/Client";
-import {
-  BuildRestClient,
-  BuildServiceIds,
-  type IBuildPageDataService,
-} from "azure-devops-extension-api/Build";
-import JSZip from "jszip";
+import { BuildRestClient } from "azure-devops-extension-api/Build";
 import "./planTab.css";
 
-const DEFAULT_ARTIFACT = "terraform-plan";
+const TF_PLAN_ATTACHMENT_TYPE = "terraform.plan.json";
 
 interface ResourceChange {
   address?: string;
@@ -88,179 +83,47 @@ function renderTable(plan: TerraformPlanJson): string {
     </table>`;
 }
 
-async function loadPlanJsonFromArtifact(
+async function loadPlanJson(
   buildClient: BuildRestClient,
   project: string,
   buildId: number,
-  artifactName: string,
 ): Promise<TerraformPlanJson> {
-  console.log(`[Terraform] Calling buildClient.getArtifactContentZip(\"${project}\", ${buildId}, \"${artifactName}\")...`);
-  const bufferStart = performance.now();
-  let buffer: ArrayBuffer;
-  try {
-    buffer = await buildClient.getArtifactContentZip(project, buildId, artifactName);
-    const bufferTime = performance.now() - bufferStart;
-    console.log(`[Terraform] ✓ Artifact ZIP buffer received in ${bufferTime.toFixed(0)}ms, size: ${buffer.byteLength} bytes`);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[Terraform] ✗ Failed to fetch artifact ZIP:`, msg);
-    if (e instanceof Error && e.stack) {
-      console.error(`[Terraform] Stack:`, e.stack);
-    }
-    throw new Error(`Failed to download artifact "${artifactName}": ${msg}`);
+  console.log(`[Terraform] Fetching attachments for build ${buildId}, type=${TF_PLAN_ATTACHMENT_TYPE}...`);
+  const attachments = await buildClient.getAttachments(project, buildId, TF_PLAN_ATTACHMENT_TYPE);
+  console.log(`[Terraform] Found ${attachments.length} attachment(s)`);
+
+  if (attachments.length === 0) {
+    throw new Error(
+      `No plan.json attachment found on build ${buildId}. Ensure the Terraform plan step ran with publishPlanArtifact: true.`,
+    );
   }
 
-  console.log(`[Terraform] Parsing ZIP file...`);
-  const zipStart = performance.now();
-  const zip = await JSZip.loadAsync(buffer);
-  const zipTime = performance.now() - zipStart;
-  console.log(`[Terraform] ✓ ZIP parsed in ${zipTime.toFixed(0)}ms`);
-
-  const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
-  console.log(`[Terraform] ZIP contents (${names.length} files):`, names.slice(0, 10).join(", "), names.length > 10 ? `... +${names.length - 10} more` : "");
-
-  const planPath = names.find((n) => n.endsWith("plan.json")) || names.find((n) => n === "plan.json");
-  if (!planPath) {
-    console.error(`[Terraform] ✗ No plan.json found in artifact. Available files: ${names.join(", ") || "(empty)"}`);
-    throw new Error(`No plan.json found inside artifact "${artifactName}". Files: ${names.join(", ") || "(empty)"}`);
+  const att = attachments[0];
+  // The _links.self.href gives us the direct download URL for the attachment content
+  const url = (att as unknown as { _links?: { self?: { href?: string } } })?._links?.self?.href;
+  if (!url) {
+    throw new Error("Attachment found but has no download URL.");
   }
-  console.log(`[Terraform] Found plan file at: ${planPath}`);
 
-  console.log(`[Terraform] Extracting plan.json content...`);
-  const text = await zip.files[planPath].async("string");
-  console.log(`[Terraform] ✓ plan.json extracted (${text.length} bytes)`);
+  console.log(`[Terraform] Downloading attachment from: ${url.substring(0, 80)}...`);
+  const token = await SDK.getAccessToken();
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    throw new Error(`Attachment download failed: HTTP ${resp.status}`);
+  }
 
-  console.log(`[Terraform] Parsing plan JSON...`);
-  const plan = JSON.parse(text) as TerraformPlanJson;
-  console.log(`[Terraform] ✓ plan.json parsed successfully`);
-
-  return plan;
+  const text = await resp.text();
+  console.log(`[Terraform] ✓ plan.json fetched (${text.length} chars)`);
+  return JSON.parse(text) as TerraformPlanJson;
 }
 
-/** Azure DevOps build pages use `?buildId=` on the parent URL; the iframe URL often has none. */
-function parseBuildIdFromAnyUrl(urlString: string): number | undefined {
-  if (!urlString || !urlString.trim()) {
-    return undefined;
-  }
-  try {
-    const url = new URL(urlString, "https://dev.azure.com");
-    for (const key of ["buildId", "buildID"]) {
-      const v = url.searchParams.get(key);
-      if (v) {
-        const n = parseInt(v, 10);
-        if (!Number.isNaN(n)) {
-          return n;
-        }
-      }
-    }
-    const pathMatch = url.pathname.match(/\/results\/(\d+)(?:\/|$)/i);
-    if (pathMatch) {
-      const n = parseInt(pathMatch[1], 10);
-      if (!Number.isNaN(n)) {
-        return n;
-      }
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
-}
-
-function extractBuildIdFromTextBlob(blob: string): number | undefined {
-  if (!blob) {
-    return undefined;
-  }
-  const patterns = [/"buildId"\s*:\s*(\d+)/gi, /"idBuild"\s*:\s*(\d+)/gi, /[?&#]buildId=(\d+)/gi];
-  for (const re of patterns) {
-    for (const m of blob.matchAll(re)) {
-      const n = parseInt(m[1], 10);
-      if (!Number.isNaN(n) && n > 0) {
-        return n;
-      }
-    }
-  }
-  return undefined;
-}
-
-/** Handshake JSON often nests buildId even when getConfiguration() looks empty at the top level. */
-function parseBuildIdFromHandshakeJson(): number | undefined {
-  const parts: string[] = [];
-  try {
-    parts.push(JSON.stringify(SDK.getPageContext()));
-  } catch {
-    /* before ready — should not happen */
-  }
-  try {
-    parts.push(JSON.stringify(SDK.getConfiguration()));
-  } catch {
-    /* ignore */
-  }
-  return extractBuildIdFromTextBlob(parts.join("\n"));
-}
-
-function parseBuildIdFromReferrer(): number | undefined {
-  return document.referrer ? parseBuildIdFromAnyUrl(document.referrer) : undefined;
-}
-
-/** Walk parent windows until cross-origin; Azure sometimes embeds the tab one level under the build page. */
-function parseBuildIdFromAncestorWindows(): number | undefined {
-  let w: Window | null = window;
-  for (let depth = 0; depth < 12 && w; depth++) {
-    try {
-      const href = w.location.href;
-      const fromUrl = parseBuildIdFromAnyUrl(href);
-      if (fromUrl !== undefined) {
-        return fromUrl;
-      }
-      const fromBlob = extractBuildIdFromTextBlob(href);
-      if (fromBlob !== undefined) {
-        return fromBlob;
-      }
-    } catch {
-      /* cross-origin */
-    }
-    try {
-      if (!w.parent || w.parent === w) {
-        break;
-      }
-      w = w.parent;
-    } catch {
-      break;
-    }
-  }
-  return undefined;
-}
-
-function parseBuildIdFromWindow(): number | undefined {
-  const tryParams = (raw: string): number | undefined => {
-    const q = raw.startsWith("?") || raw.startsWith("#") ? raw.slice(1) : raw;
-    if (!q.trim()) {
-      return undefined;
-    }
-    const params = new URLSearchParams(q);
-    for (const key of ["buildId", "buildID", "build", "id"]) {
-      const v = params.get(key);
-      if (v) {
-        const n = parseInt(v, 10);
-        if (!Number.isNaN(n)) {
-          return n;
-        }
-      }
-    }
-    return undefined;
-  };
-  const fromSearch = tryParams(window.location.search);
-  if (fromSearch !== undefined) {
-    return fromSearch;
-  }
-  if (window.location.hash.length > 1) {
-    return tryParams(window.location.hash);
-  }
-  return undefined;
-}
-
-function resolveBuildIdFromConfiguration(): number {
+/** Build results tabs receive the build via SDK configuration. */
+function resolveBuildId(): number {
   const cfg = SDK.getConfiguration() as Record<string, unknown>;
+  console.log("[Terraform] SDK configuration keys:", Object.keys(cfg).join(", "));
+
   const fromObj = (o: unknown): number | undefined => {
     if (o && typeof o === "object" && "id" in o) {
       const id = (o as { id: unknown }).id;
@@ -268,169 +131,47 @@ function resolveBuildIdFromConfiguration(): number {
     }
     return undefined;
   };
-  const candidates: Array<number | undefined> = [
-    fromObj(cfg.build),
-    fromObj(cfg.buildDetails),
-    typeof cfg.buildId === "number" ? cfg.buildId : undefined,
-    typeof cfg.id === "number" ? cfg.id : undefined,
-  ];
-  for (const c of candidates) {
-    if (c !== undefined) {
-      return c;
-    }
+
+  for (const key of ["build", "buildDetails"]) {
+    const id = fromObj(cfg[key]);
+    if (id !== undefined) return id;
   }
-  for (const v of Object.values(cfg)) {
-    const id = fromObj(v);
-    if (id !== undefined) {
-      return id;
-    }
+  if (typeof cfg.buildId === "number") return cfg.buildId;
+
+  // Fallback: parse from the full config JSON blob
+  const blob = JSON.stringify(cfg);
+  const m = blob.match(/"(?:build)?[Ii]d"\s*:\s*(\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (!Number.isNaN(n) && n > 0) return n;
   }
+
   throw new Error(
-    "Could not resolve build id. Open **Pipelines → Runs → select one finished run → Summary → Terraform**. This tab does not run on the project Dashboard or the pipeline list (there is no single build there). Install the latest ADO Terraform Agent if the problem continues.",
+    "Could not resolve build id. Open this tab from Pipelines → Runs → select a finished run → Terraform tab.",
   );
 }
 
-async function tryBuildIdFromPageDataService(): Promise<number | undefined> {
-  try {
-    const buildPageService = await SDK.getService<IBuildPageDataService>(
-      BuildServiceIds.BuildPageDataService,
-    );
-    for (let attempt = 0; attempt < 80; attempt++) {
-      const pageData = buildPageService.getBuildPageData();
-      const id = pageData?.build?.id;
-      if (typeof id === "number" && !Number.isNaN(id)) {
-        return id;
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  } catch {
-    /* service missing */
-  }
-  return undefined;
-}
-
-/** Some hosts expose the current build only through this callback. */
-async function tryBuildIdFromOnBuildChanged(): Promise<number | undefined> {
-  const cfg = SDK.getConfiguration() as {
-    onBuildChanged?: (cb: (build: { id?: number }) => void) => void;
-  };
-  if (typeof cfg.onBuildChanged !== "function") {
-    return undefined;
-  }
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (id: number | undefined) => {
-      if (settled || id === undefined || Number.isNaN(id)) {
-        return;
-      }
-      settled = true;
-      resolve(id);
-    };
-    try {
-      cfg.onBuildChanged!((build) => {
-        finish(typeof build?.id === "number" ? build.id : undefined);
-      });
-    } catch {
-      resolve(undefined);
-      return;
-    }
-    setTimeout(() => {
-      if (!settled) {
-        resolve(undefined);
-      }
-    }, 3000);
-  });
-}
-
-/**
- * Resolve build id from handshake JSON, URLs (iframe, referrer, ancestors), BuildPageDataService,
- * and host callbacks. Project Dashboard has no build context — use a single run’s Summary page.
- */
-async function resolveBuildId(): Promise<number> {
-  const fromHandshake = parseBuildIdFromHandshakeJson();
-  if (fromHandshake !== undefined) {
-    return fromHandshake;
-  }
-
-  const fromSurfaces = extractBuildIdFromTextBlob(
-    [window.location.href, document.documentURI || "", document.referrer || ""].join("\n"),
-  );
-  if (fromSurfaces !== undefined) {
-    return fromSurfaces;
-  }
-
-  const fromAncestors = parseBuildIdFromAncestorWindows();
-  if (fromAncestors !== undefined) {
-    return fromAncestors;
-  }
-
-  const fromRef = parseBuildIdFromReferrer();
-  if (fromRef !== undefined) {
-    return fromRef;
-  }
-
-  const fromWin = parseBuildIdFromWindow();
-  if (fromWin !== undefined) {
-    return fromWin;
-  }
-
-  const fromService = await tryBuildIdFromPageDataService();
-  if (fromService !== undefined) {
-    return fromService;
-  }
-
-  const fromCb = await tryBuildIdFromOnBuildChanged();
-  if (fromCb !== undefined) {
-    return fromCb;
-  }
-
-  return resolveBuildIdFromConfiguration();
-}
-
-function resolveArtifactName(): string {
-  const cfg = SDK.getConfiguration() as { artifactName?: string };
-  return (cfg.artifactName && cfg.artifactName.trim()) || DEFAULT_ARTIFACT;
-}
-
-/** Mermaid is large; load it only after the host stops the loading spinner. */
 async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
   const host = document.getElementById("tf-diagram-host");
-  if (!host) {
-    console.error("[Terraform] ✗ diagram host element not found");
-    return;
-  }
-  console.log("[Terraform] Loading Mermaid and rendering diagram...");
+  if (!host) return;
   try {
-    const mermaidStart = performance.now();
     const mermaid = (await import("mermaid")).default;
-    const importTime = performance.now() - mermaidStart;
-    console.log(`[Terraform] ✓ Mermaid module loaded in ${importTime.toFixed(0)}ms`);
-
     mermaid.initialize({
       startOnLoad: false,
       theme: "default",
       securityLevel: "strict",
       flowchart: { useMaxWidth: true, htmlLabels: true },
     });
-    console.log("[Terraform] ✓ Mermaid initialized");
-
     const graph = document.createElement("div");
     graph.className = "mermaid";
     graph.textContent = diagramSource;
     host.innerHTML = "";
     host.appendChild(graph);
-    console.log("[Terraform] ✓ Mermaid diagram element added to DOM");
-
-    const renderStart = performance.now();
     await mermaid.run({ nodes: [graph] });
-    const renderTime = performance.now() - renderStart;
-    console.log(`[Terraform] ✓ Mermaid diagram rendered successfully in ${renderTime.toFixed(0)}ms`);
+    console.log("[Terraform] ✓ Diagram rendered");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[Terraform] ✗ Diagram rendering failed:", msg);
-    if (e instanceof Error && e.stack) {
-      console.error("[Terraform] Stack:", e.stack);
-    }
+    console.error("[Terraform] Diagram failed:", msg);
     host.innerHTML = `<p class="muted">Diagram could not be rendered: ${escapeHtml(msg)}</p><pre class="tf-mermaid-fallback">${escapeHtml(
       diagramSource,
     )}</pre>`;
@@ -439,46 +180,34 @@ async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
 
 async function main(): Promise<void> {
   const app = document.getElementById("app");
-  if (!app) {
-    console.error("[Terraform] FATAL: Missing #app root element.");
-    return;
-  }
+  if (!app) return;
 
+  // Phase 1: SDK handshake — must complete quickly or ADO kills the iframe
   try {
-    console.log("[Terraform] Starting planTab initialization...");
-
     await SDK.init({ loaded: false, applyTheme: true });
-    console.log("[Terraform] SDK.init() completed");
-
     await SDK.ready();
-    console.log("[Terraform] SDK.ready() completed");
-
-    // Notify host immediately so the tab frame renders (ADO has a ~10s handshake timeout)
     await SDK.notifyLoadSucceeded();
-    console.log("[Terraform] ✓ SDK.notifyLoadSucceeded() called early");
+    console.log("[Terraform] ✓ SDK handshake complete");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[Terraform] SDK init failed:", msg);
     app.innerHTML = `<div class="error"><strong>SDK init failed</strong><p><code>${escapeHtml(msg)}</code></p></div>`;
     try { await SDK.notifyLoadFailed(msg); } catch { /* ignore */ }
     return;
   }
 
-  // Now load data asynchronously — the tab is already visible
+  // Phase 2: Load data (tab is already visible)
   try {
     const context = SDK.getWebContext();
     const project = context.project;
     if (!project?.name) {
-      throw new Error("Project context is not available. Open this tab from a build run summary page.");
+      throw new Error("Project context not available. Open this tab from a build run summary page.");
     }
 
-    const buildId = await resolveBuildId();
-    const artifactName = resolveArtifactName();
-    console.log(`[Terraform] Context: buildId=${buildId}, artifact=${artifactName}, project=${project.name}`);
+    const buildId = resolveBuildId();
+    console.log(`[Terraform] buildId=${buildId}, project=${project.name}`);
 
     const buildClient = getClient(BuildRestClient);
-    const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
-    console.log(`[Terraform] ✓ Loaded ${(plan.resource_changes || []).length} resources`);
+    const plan = await loadPlanJson(buildClient, project.name, buildId);
 
     const meta = [
       plan.terraform_version ? `Terraform ${escapeHtml(plan.terraform_version)}` : null,
@@ -492,8 +221,8 @@ async function main(): Promise<void> {
     app.innerHTML = `
       <div class="tf-header">
         <h2>Infrastructure plan</h2>
-        <p class="muted">${meta || "Parsed from published plan artifact."}</p>
-        <p class="muted">Artifact: <code>${escapeHtml(artifactName)}</code> | Resources: <code>${(plan.resource_changes || []).length}</code></p>
+        <p class="muted">${meta || "Parsed from published plan attachment."}</p>
+        <p class="muted">Resources: <code>${(plan.resource_changes || []).length}</code></p>
       </div>
       <h3>Resource changes</h3>
       ${renderTable(plan)}
@@ -516,8 +245,7 @@ async function main(): Promise<void> {
         <pre style="background: #f3f2f1; padding: 8px; border-radius: 4px; font-size: 0.8rem; overflow: auto; max-height: 200px;">${escapeHtml(stack || "")}</pre>
       </details>
       <p class="muted" style="margin-top: 12px;">
-        • Ensure you ran <strong>Terraform plan</strong> with <strong>publishPlanArtifact: true</strong><br>
-        • Ensure the artifact name matches <code>${escapeHtml(resolveArtifactName())}</code><br>
+        • Ensure the Terraform plan step ran with <strong>publishPlanArtifact: true</strong><br>
         • Open DevTools (F12) → Console for details
       </p>
     </div>`;

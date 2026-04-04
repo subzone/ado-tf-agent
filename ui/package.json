@@ -8,7 +8,6 @@
   "dependencies": {
     "azure-devops-extension-api": "^4.252.0",
     "azure-devops-extension-sdk": "^4.0.2",
-    "jszip": "^3.10.1",
     "mermaid": "^10.9.0"
   },
   "devDependencies": {
