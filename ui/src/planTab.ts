@@ -430,7 +430,19 @@ async function renderDiagram(src: string): Promise<void> {
 
 // ── Data loading ─────────────────────────────────────────────────────────────
 
+// FIX: SSRF — validate attachment URL is a trusted ADO hostname before fetching with Bearer token
+function assertTrustedAttachmentUrl(url: string): void {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { throw new Error("Invalid attachment URL."); }
+  if (parsed.protocol !== "https:") throw new Error("Attachment URL must use HTTPS.");
+  const trusted = /^([a-z0-9-]+\.)?(visualstudio\.com|dev\.azure\.com|vsassets\.io|gallerycdn\.vsassets\.io)$/i;
+  if (!trusted.test(parsed.hostname)) {
+    throw new Error(`Untrusted attachment hostname: ${esc(parsed.hostname)}`);
+  }
+}
+
 async function downloadAttachment(url: string): Promise<string> {
+  assertTrustedAttachmentUrl(url);
   const token = await SDK.getAccessToken();
   const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!resp.ok) throw new Error(`Attachment download failed: HTTP ${resp.status}`);
@@ -499,13 +511,13 @@ async function main(): Promise<void> {
     const project = SDK.getWebContext().project;
     if (!project?.name) throw new Error("No project context.");
 
-    app.innerHTML = `<p class="muted">Finding latest Terraform plan…</p>`;
+    app.textContent = "Finding latest Terraform plan…";
 
     const buildClient = getClient(BuildRestClient);
     const hintBuildId = await getBuildIdFromSDK();
     const { buildId, attachmentUrl } = await findBuildWithAttachment(buildClient, project.name, hintBuildId);
 
-    app.innerHTML = `<p class="muted">Loading plan for build ${buildId}…</p>`;
+    app.textContent = `Loading plan for build ${buildId}…`;
     const text = await downloadAttachment(attachmentUrl);
     const plan = JSON.parse(text) as TerraformPlanJson;
 
