@@ -61,11 +61,84 @@ h3 {
 .tf-badge--no-op   { background: #f0f0f0; color: #888;    border: 1px solid #ccc; }
 
 .tf-table {
+  width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
+
+.tf-row-summary {
+  cursor: pointer;
+}
+
+.tf-row-summary:hover td {
+  background: #f3f2f1;
+}
+
+.tf-expand-cell {
+  width: 28px;
+  text-align: center;
+  color: #605e5c;
+  user-select: none;
+}
+
+.tf-chevron {
+  font-size: 0.65rem;
+}
+
+.tf-row-detail td {
+  padding: 0 !important;
+  border-top: none !important;
+}
+
+.tf-diff-cell {
+  padding: 0 !important;
+  background: #faf9f8;
+}
+
+.tf-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+.tf-diff-table th {
+  background: #f3f2f1;
+  padding: 5px 10px;
+  text-align: left;
+  border-bottom: 1px solid #e1dfdd;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.tf-diff-table td {
+  padding: 3px 10px;
+  border-bottom: 1px solid #f0efee;
+  vertical-align: top;
+  word-break: break-all;
+}
+
+.tf-diff-key {
+  color: #605e5c;
+  width: 220px;
+  min-width: 120px;
+}
+
+.tf-diff-row--changed td {
+  background: #fffbe6;
+}
+
+.tf-diff-row--changed .tf-diff-before { color: #a4262c; }
+.tf-diff-row--changed .tf-diff-after  { color: #107c10; }
+
+.tf-sensitive { color: #8764b8; font-style: italic; }
+.tf-unknown   { color: #605e5c; font-style: italic; }
+.tf-null      { color: #bbb; }
+.tf-bool      { color: #0078d4; }
+.tf-num       { color: #0078d4; }
+.tf-str       { color: #1b1b1b; }
 
 .tf-table th,
 .tf-table td {

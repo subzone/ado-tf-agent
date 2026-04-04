@@ -6,48 +6,48 @@ import "./planTab.css";
 const TF_PLAN_ATTACHMENT_TYPE = "terraform.plan.json";
 const CONTRIBUTION_ID = "subzone.ado-tf-agent.terraform-plan-tab";
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
 interface ResourceChange {
   address?: string;
   type?: string;
-  change?: { actions?: string[] };
+  change?: {
+    actions?: string[];
+    before?: Record<string, unknown> | null;
+    after?: Record<string, unknown> | null;
+    after_unknown?: Record<string, unknown>;
+    before_sensitive?: Record<string, unknown>;
+    after_sensitive?: Record<string, unknown>;
+  };
+}
+
+interface ConfigExpression {
+  references?: string[];
+}
+
+interface ConfigResource {
+  address?: string;
+  expressions?: Record<string, ConfigExpression | unknown>;
 }
 
 interface TerraformPlanJson {
   resource_changes?: ResourceChange[];
   terraform_version?: string;
   format_version?: string;
+  configuration?: {
+    root_module?: {
+      resources?: ConfigResource[];
+    };
+  };
 }
+
+type ActionKind = "create" | "delete" | "update" | "replace" | "no-op" | "read";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-
-function buildMermaid(plan: TerraformPlanJson): string {
-  const changes = plan.resource_changes || [];
-  const groups = new Map<string, ResourceChange[]>();
-  for (const rc of changes) {
-    const t = rc.type || "unknown";
-    const prov = t.includes("_") ? t.split("_")[0]! : "misc";
-    if (!groups.has(prov)) groups.set(prov, []);
-    groups.get(prov)!.push(rc);
-  }
-  const lines: string[] = ["flowchart TB"];
-  let gi = 0;
-  for (const [prov, list] of groups) {
-    const e = (s: string) => s.replace(/"/g, "'").slice(0, 120);
-    lines.push(`  subgraph g${gi}["${e(prov)}"]`);
-    list.forEach((rc, idx) => {
-      const addr = rc.address || `${prov}.${idx}`;
-      const actions = (rc.change?.actions || []).join(",");
-      lines.push(`    n_${gi}_${idx}["${e(addr)}\\n${e(actions || "unknown")}"]`);
-    });
-    lines.push("  end");
-    gi++;
-  }
-  return lines.join("\n");
-}
-
-type ActionKind = "create" | "delete" | "update" | "replace" | "no-op" | "read";
 
 function classifyActions(actions: string[]): ActionKind {
   if (actions.includes("create") && actions.includes("delete")) return "replace";
@@ -71,6 +71,8 @@ function actionBadge(actions: string[]): string {
   return `<span class="tf-badge tf-badge--${kind}">${label[kind]}</span>`;
 }
 
+// ── Summary bar ──────────────────────────────────────────────────────────────
+
 function renderSummary(plan: TerraformPlanJson): string {
   const counts: Record<ActionKind, number> = { create: 0, delete: 0, update: 0, replace: 0, read: 0, "no-op": 0 };
   for (const rc of plan.resource_changes || []) {
@@ -87,18 +89,238 @@ function renderSummary(plan: TerraformPlanJson): string {
   return `<div class="tf-summary">${parts.join("")}</div>`;
 }
 
+// ── Feature 4: Expandable diff rows ─────────────────────────────────────────
+
+function renderValue(val: unknown, sensitive: unknown): string {
+  if (sensitive === true) return `<span class="tf-sensitive">(sensitive)</span>`;
+  if (val === null || val === undefined) return `<span class="tf-null">null</span>`;
+  if (typeof val === "boolean") return `<span class="tf-bool">${val}</span>`;
+  if (typeof val === "number") return `<span class="tf-num">${val}</span>`;
+  if (typeof val === "string") return `<span class="tf-str">${esc(val)}</span>`;
+  return `<span class="tf-str">${esc(JSON.stringify(val))}</span>`;
+}
+
+function renderDiffTable(rc: ResourceChange): string {
+  const before = rc.change?.before ?? {};
+  const after  = rc.change?.after  ?? {};
+  const afterUnknown  = rc.change?.after_unknown  ?? {};
+  const beforeSens    = rc.change?.before_sensitive ?? {};
+  const afterSens     = rc.change?.after_sensitive  ?? {};
+  const actions = rc.change?.actions || [];
+  const kind = classifyActions(actions);
+
+  const allKeys = Array.from(new Set([
+    ...Object.keys(before ?? {}),
+    ...Object.keys(after  ?? {}),
+  ])).sort();
+
+  if (!allKeys.length) return `<p class="muted" style="margin:8px 0">No attribute details available.</p>`;
+
+  const rows = allKeys.map((key) => {
+    const bVal = (before as Record<string, unknown>)?.[key];
+    const aVal = (after  as Record<string, unknown>)?.[key];
+    const bSens = (beforeSens as Record<string, unknown>)?.[key];
+    const aSens = (afterSens  as Record<string, unknown>)?.[key];
+    const unknown = (afterUnknown as Record<string, unknown>)?.[key];
+
+    const changed = JSON.stringify(bVal) !== JSON.stringify(aVal) || unknown;
+    const rowClass = changed ? "tf-diff-row--changed" : "";
+
+    const beforeCell = kind === "create"
+      ? `<span class="tf-null">-</span>`
+      : renderValue(bVal, bSens);
+
+    const afterCell = unknown
+      ? `<span class="tf-unknown">(known after apply)</span>`
+      : kind === "delete"
+        ? `<span class="tf-null">-</span>`
+        : renderValue(aVal, aSens);
+
+    return `<tr class="${rowClass}">
+      <td class="tf-diff-key">${esc(key)}</td>
+      <td class="tf-diff-before">${beforeCell}</td>
+      <td class="tf-diff-after">${afterCell}</td>
+    </tr>`;
+  });
+
+  return `<table class="tf-diff-table">
+    <thead><tr><th>Attribute</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>${rows.join("")}</tbody>
+  </table>`;
+}
+
 function renderTable(plan: TerraformPlanJson): string {
   const changes = (plan.resource_changes || []).filter(
     rc => classifyActions(rc.change?.actions || []) !== "no-op"
   );
-  const rows = changes.map((rc) =>
-    `<tr><td>${esc(rc.address || "")}</td><td>${esc(rc.type || "")}</td><td>${actionBadge(rc.change?.actions || [])}</td></tr>`
-  );
-  return `<table class="tf-table">
-    <thead><tr><th>Address</th><th>Type</th><th>Action</th></tr></thead>
-    <tbody>${rows.join("") || '<tr><td colspan="3">No resource changes.</td></tr>'}</tbody>
+
+  const rows = changes.map((rc, i) => {
+    const diffHtml = renderDiffTable(rc);
+    return `
+      <tr class="tf-row-summary" data-idx="${i}" role="button" tabindex="0" aria-expanded="false">
+        <td class="tf-expand-cell"><span class="tf-chevron">▶</span></td>
+        <td>${esc(rc.address || "")}</td>
+        <td>${esc(rc.type || "")}</td>
+        <td>${actionBadge(rc.change?.actions || [])}</td>
+      </tr>
+      <tr class="tf-row-detail" id="tf-detail-${i}" hidden>
+        <td colspan="4" class="tf-diff-cell">${diffHtml}</td>
+      </tr>`;
+  });
+
+  return `<table class="tf-table" id="tf-changes-table">
+    <thead><tr><th></th><th>Address</th><th>Type</th><th>Action</th></tr></thead>
+    <tbody>${rows.join("") || '<tr><td colspan="4">No resource changes.</td></tr>'}</tbody>
   </table>`;
 }
+
+function attachTableToggle(): void {
+  const table = document.getElementById("tf-changes-table");
+  if (!table) return;
+
+  const toggle = (summaryRow: HTMLElement) => {
+    const idx = summaryRow.dataset.idx;
+    const detail = document.getElementById(`tf-detail-${idx}`);
+    const chevron = summaryRow.querySelector(".tf-chevron");
+    if (!detail) return;
+    const expanded = !detail.hidden;
+    detail.hidden = expanded;
+    summaryRow.setAttribute("aria-expanded", String(!expanded));
+    if (chevron) chevron.textContent = expanded ? "▶" : "▼";
+  };
+
+  table.addEventListener("click", (e) => {
+    const row = (e.target as HTMLElement).closest(".tf-row-summary") as HTMLElement | null;
+    if (row) toggle(row);
+  });
+
+  table.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      const row = (e.target as HTMLElement).closest(".tf-row-summary") as HTMLElement | null;
+      if (row) { e.preventDefault(); toggle(row); }
+    }
+  });
+}
+
+// ── Feature 3: Real dependency graph ─────────────────────────────────────────
+
+function buildDependencyGraph(plan: TerraformPlanJson): string {
+  const changes = plan.resource_changes || [];
+  const configResources = plan.configuration?.root_module?.resources || [];
+
+  // Map address → action kind for node coloring
+  const actionMap = new Map<string, ActionKind>();
+  for (const rc of changes) {
+    if (rc.address) actionMap.set(rc.address, classifyActions(rc.change?.actions || []));
+  }
+
+  // Build edges from configuration.references
+  // Each config resource lists expressions whose values contain "references" arrays
+  const edges = new Set<string>();
+  const nodeSet = new Set<string>();
+
+  for (const rc of changes) {
+    if (rc.address) nodeSet.add(rc.address);
+  }
+
+  for (const cfgRes of configResources) {
+    const src = cfgRes.address;
+    if (!src || !nodeSet.has(src)) continue;
+
+    const exprs = cfgRes.expressions ?? {};
+    const refs = new Set<string>();
+
+    const collectRefs = (val: unknown) => {
+      if (!val || typeof val !== "object") return;
+      if (Array.isArray(val)) { val.forEach(collectRefs); return; }
+      const obj = val as Record<string, unknown>;
+      if (Array.isArray(obj.references)) {
+        for (const r of obj.references as string[]) {
+          // references look like "aws_vpc.main.id" or "aws_vpc.main" — normalise to address
+          const parts = r.split(".");
+          if (parts.length >= 2) {
+            const addr = parts.slice(0, 2).join(".");
+            if (nodeSet.has(addr) && addr !== src) refs.add(addr);
+          }
+        }
+      }
+      Object.values(obj).forEach(collectRefs);
+    };
+
+    collectRefs(exprs);
+    for (const dep of refs) {
+      edges.add(`${src}||${dep}`);
+    }
+  }
+
+  // Safe Mermaid node ID
+  const nodeId = (addr: string) => `n_${addr.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+  // Node shape/style by action
+  const nodeStyle: Record<ActionKind, string> = {
+    create:  ":::create",
+    delete:  ":::delete",
+    update:  ":::update",
+    replace: ":::replace",
+    read:    ":::read",
+    "no-op": ":::noop",
+  };
+
+  const e = (s: string) => s.replace(/"/g, "'").slice(0, 60);
+
+  const lines: string[] = ["flowchart LR"];
+
+  // Class definitions for coloring
+  lines.push("  classDef create  fill:#dff6dd,stroke:#107c10,color:#107c10");
+  lines.push("  classDef delete  fill:#fde7e9,stroke:#a4262c,color:#a4262c");
+  lines.push("  classDef update  fill:#fff4ce,stroke:#c8a400,color:#7a5c00");
+  lines.push("  classDef replace fill:#fff4ce,stroke:#c8a400,color:#7a5c00");
+  lines.push("  classDef read    fill:#f0f0f0,stroke:#bbb,color:#444");
+  lines.push("  classDef noop    fill:#f8f8f8,stroke:#ddd,color:#aaa");
+
+  // Nodes
+  for (const addr of nodeSet) {
+    const kind = actionMap.get(addr) ?? "no-op";
+    const style = nodeStyle[kind];
+    // Short label: just the resource name part (after last dot)
+    const label = addr.includes(".") ? addr.split(".").slice(-2).join(".") : addr;
+    lines.push(`  ${nodeId(addr)}["${e(label)}"]${style}`);
+  }
+
+  // Edges
+  for (const edge of edges) {
+    const [from, to] = edge.split("||");
+    lines.push(`  ${nodeId(from)} --> ${nodeId(to)}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function renderDiagram(src: string): Promise<void> {
+  const host = document.getElementById("tf-diagram-host");
+  if (!host) return;
+  try {
+    const mermaid = (await import("mermaid")).default;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "default",
+      securityLevel: "loose",  // needed for classDef styles
+      flowchart: { useMaxWidth: true, htmlLabels: false },
+    });
+    const el = document.createElement("div");
+    el.className = "mermaid";
+    el.textContent = src;
+    host.innerHTML = "";
+    host.appendChild(el);
+    await mermaid.run({ nodes: [el] });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    host.innerHTML = `<p class="muted">Diagram error: ${esc(msg)}</p>
+      <pre class="tf-mermaid-fallback">${esc(src)}</pre>`;
+  }
+}
+
+// ── Data loading ─────────────────────────────────────────────────────────────
 
 async function downloadAttachment(url: string): Promise<string> {
   const token = await SDK.getAccessToken();
@@ -107,26 +329,7 @@ async function downloadAttachment(url: string): Promise<string> {
   return resp.text();
 }
 
-async function renderDiagram(src: string): Promise<void> {
-  const host = document.getElementById("tf-diagram-host");
-  if (!host) return;
-  try {
-    const mermaid = (await import("mermaid")).default;
-    mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "strict", flowchart: { useMaxWidth: true, htmlLabels: true } });
-    const el = document.createElement("div");
-    el.className = "mermaid";
-    el.textContent = src;
-    host.innerHTML = "";
-    host.appendChild(el);
-    await mermaid.run({ nodes: [el] });
-  } catch (e) {
-    host.innerHTML = `<p class="muted">Diagram error: ${esc(e instanceof Error ? e.message : String(e))}</p>`;
-  }
-}
-
-/** Try to get build ID from SDK config or onBuildChanged — fast, no waiting if not available. */
 function getBuildIdFromSDK(): Promise<number | undefined> {
-  // Check config first
   try {
     const cfg = SDK.getConfiguration() as Record<string, unknown>;
     const fromObj = (o: unknown) => {
@@ -137,64 +340,47 @@ function getBuildIdFromSDK(): Promise<number | undefined> {
     };
     for (const key of ["build", "buildDetails"]) {
       const id = fromObj(cfg[key]);
-      if (id) { console.log(`[TF] buildId from cfg.${key}:`, id); return Promise.resolve(id); }
+      if (id) return Promise.resolve(id);
     }
     if (typeof cfg.buildId === "number") return Promise.resolve(cfg.buildId);
   } catch { /* */ }
 
-  // Try onBuildChanged with short timeout
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(undefined), 3000);
     try {
       SDK.register(CONTRIBUTION_ID, {
         onBuildChanged: (build: { id?: number }) => {
-          console.log("[TF] onBuildChanged:", build?.id);
           clearTimeout(timer);
           resolve(typeof build?.id === "number" ? build.id : undefined);
         },
       });
-    } catch {
-      clearTimeout(timer);
-      resolve(undefined);
-    }
+    } catch { clearTimeout(timer); resolve(undefined); }
   });
 }
 
-/** Find the most recent build in this project that has our plan attachment. */
 async function findBuildWithAttachment(
   buildClient: BuildRestClient,
   project: string,
   hintBuildId?: number,
 ): Promise<{ buildId: number; attachmentUrl: string }> {
-  // If we have a hint, try it first
   const candidates: number[] = hintBuildId ? [hintBuildId] : [];
-
-  // Also fetch the 10 most recent builds
   const recentBuilds = await buildClient.getBuilds(project, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 10);
   for (const b of recentBuilds) {
     if (b.id && !candidates.includes(b.id)) candidates.push(b.id);
   }
-
-  console.log(`[TF] Checking ${candidates.length} builds for attachment...`);
-
   for (const buildId of candidates) {
     try {
       const attachments = await buildClient.getAttachments(project, buildId, TF_PLAN_ATTACHMENT_TYPE);
       if (attachments.length > 0) {
         const url = (attachments[0] as unknown as { _links?: { self?: { href?: string } } })?._links?.self?.href;
-        if (url) {
-          console.log(`[TF] Found attachment on build ${buildId}`);
-          return { buildId, attachmentUrl: url };
-        }
+        if (url) return { buildId, attachmentUrl: url };
       }
-    } catch { /* build may not have timeline */ }
+    } catch { /* */ }
   }
-
-  throw new Error(
-    `No Terraform plan attachment found in the last ${candidates.length} builds. ` +
-    `Run a pipeline with the Terraform plan step and publishPlanArtifact: true.`
-  );
+  throw new Error(`No Terraform plan attachment found in the last ${candidates.length} builds.`);
 }
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const app = document.getElementById("app");
@@ -204,7 +390,6 @@ async function main(): Promise<void> {
     await SDK.init({ loaded: false, applyTheme: true });
     await SDK.ready();
     await SDK.notifyLoadSucceeded();
-    console.log("[TF] ✓ SDK ready");
 
     const project = SDK.getWebContext().project;
     if (!project?.name) throw new Error("No project context.");
@@ -212,36 +397,35 @@ async function main(): Promise<void> {
     app.innerHTML = `<p class="muted">Finding latest Terraform plan…</p>`;
 
     const buildClient = getClient(BuildRestClient);
-
-    // Try to get build ID from SDK (fast path), then fall back to scanning recent builds
     const hintBuildId = await getBuildIdFromSDK();
-    console.log("[TF] hintBuildId:", hintBuildId);
-
     const { buildId, attachmentUrl } = await findBuildWithAttachment(buildClient, project.name, hintBuildId);
 
     app.innerHTML = `<p class="muted">Loading plan for build ${buildId}…</p>`;
     const text = await downloadAttachment(attachmentUrl);
     const plan = JSON.parse(text) as TerraformPlanJson;
-    console.log(`[TF] ✓ plan.json loaded (${(plan.resource_changes || []).length} resources)`);
 
     const meta = [
       plan.terraform_version ? `Terraform ${esc(plan.terraform_version)}` : null,
       plan.format_version ? `format ${esc(String(plan.format_version))}` : null,
     ].filter(Boolean).join(" · ");
 
+    const edgeCount = (plan.configuration?.root_module?.resources || []).length;
+    const diagramSrc = buildDependencyGraph(plan);
+
     app.innerHTML = `
       <div class="tf-header">
         <h2>Infrastructure plan</h2>
         <p class="muted">${meta || "From plan attachment."} · Build <code>#${buildId}</code></p>
-        <p class="muted">Resources: <code>${(plan.resource_changes || []).length}</code></p>
       </div>
       ${renderSummary(plan)}
-      <h3>Resource changes</h3>
+      <h3>Resource changes <span class="muted" style="font-size:.8rem;font-weight:400">— click a row to expand diff</span></h3>
       ${renderTable(plan)}
-      <h3>Architecture sketch</h3>
+      <h3>Dependency graph${edgeCount ? ` <span class="muted" style="font-size:.8rem;font-weight:400">${edgeCount} resources</span>` : ""}</h3>
       <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering…</p></div>
     `;
-    void renderDiagram(buildMermaid(plan));
+
+    attachTableToggle();
+    void renderDiagram(diagramSrc);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : "";
