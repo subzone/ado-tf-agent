@@ -9,5 +9,22 @@
     <div id="app">
       <p class="muted">Loading Terraform plan…</p>
     </div>
+    <script>
+      // The ADO host injects an AMD loader and pre-loads the SDK before our page runs.
+      // We grab the host's SDK instance synchronously (AMD cache) and expose it globally
+      // so our webpack bundle uses it instead of initializing a second copy.
+      if (typeof require === "function" && typeof define === "function" && define.amd) {
+        // Synchronous AMD require — works because the SDK is already in the module cache
+        try {
+          window.__AzureDevOpsSDK = require("azure-devops-extension-sdk");
+        } catch(e) {
+          // Module not cached yet — async fallback
+          require(["azure-devops-extension-sdk"], function(sdk) {
+            window.__AzureDevOpsSDK = sdk;
+          });
+        }
+      }
+    </script>
+    <!-- webpack injects planTab.bundle.js here -->
   </body>
 </html>

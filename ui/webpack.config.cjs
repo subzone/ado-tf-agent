@@ -10,6 +10,10 @@ module.exports = {
   },
   resolve: {
     extensions: [".ts", ".js"],
+    alias: {
+      // Use the host's pre-loaded SDK instance if available, else fall back to bundled
+      "azure-devops-extension-sdk": path.resolve(__dirname, "src/sdk-shim.js"),
+    },
   },
   module: {
     rules: [
