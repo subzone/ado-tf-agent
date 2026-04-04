@@ -22,19 +22,19 @@ In your pipeline settings, enable **Allow scripts to access the OAuth token**.
 
 ## What the comment looks like
 
-```
-🏗️ Terraform Plan — Build #42
+```markdown
+## 🏗️ Terraform Plan — Build [#42](https://dev.azure.com/…/_build/results?buildId=42)
 
-🟢 20 to add · 🟡 3 to change · 🔴 1 to destroy
+🟢 **20 to add** · 🟡 **3 to change** · 🔴 **1 to destroy**
 
 | | Resource | Action |
 |---|---|---|
-| 🟢 | aws_vpc.main | create |
-| 🟢 | aws_subnet.public_a | create |
-| 🟡 | aws_security_group.app | update |
-| 🔴 | aws_instance.old | delete |
+| 🟢 | `aws_vpc.main` | create |
+| 🟢 | `aws_subnet.public_a` | create |
+| 🟡 | `aws_security_group.app` | update |
+| 🔴 | `aws_instance.old` | delete |
 
-Posted by ADO Terraform Agent · View full plan
+<sub>Posted by ADO Terraform Agent · [View full plan](https://dev.azure.com/…/_build/results?buildId=42)</sub>
 ```
 
 Up to 30 resources are listed. Comments are only posted on PR builds — silently skipped on branch builds.

@@ -22,38 +22,41 @@ jobs:
 
       - name: Block private key markers
         run: |
-          if git grep -nE "BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY" -- . ':!*.md'; then
+          if git grep -nE "BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY" -- .; then
             echo "::error::Potential private key material detected."
             exit 1
           fi
 
       - name: Block AWS access key patterns
         run: |
-          if git grep -nE "AKIA[0-9A-Z]{16}" -- . ':!*.md'; then
+          if git grep -nE "AKIA[0-9A-Z]{16}" -- .; then
             echo "::error::Potential AWS access key detected."
             exit 1
           fi
 
       - name: Block generic secret patterns
         run: |
-          if git grep -nEi "(password|passwd|pwd|secret|token|api[_-]?key|auth[_-]?key)[[:space:]]*[:=][[:space:]]*['\"][^'\"]{8,}['\"]" \
-            -- . ':!*.md' ':!*.yml' ':!*.yaml'; then
+          matches="$(git grep -nEi "(password|passwd|pwd|secret|token|api[_-]?key|auth[_-]?key)[[:space:]]*[:=][[:space:]]*['\"][^'\"]{8,}['\"]" \
+            -- . ':!*.md' || true)"
+
+          filtered_matches="$(printf '%s\n' "$matches" | grep -Eiv "^[^:]+:[0-9]+:.*[:=][[:space:]]*['\"]?(\$\{\{[[:space:]]*(secrets|vars)\.[^}]+\}\}|\$[A-Z_][A-Z0-9_]*)['\"]?[[:space:]]*$" || true)"
+
+          if [ -n "$filtered_matches" ]; then
+            printf '%s\n' "$filtered_matches"
             echo "::error::Potential hardcoded secret detected."
             exit 1
           fi
 
       - name: Block Azure storage connection strings
         run: |
-          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" \
-            -- . ':!*.md' ':!.github/workflows/**'; then
+          if git grep -nE "DefaultEndpointsProtocol=https;AccountName=" -- . ':!*.md'; then
             echo "::error::Potential Azure storage connection string detected."
             exit 1
           fi
 
       - name: Block GCP service account keys
         run: |
-          if git grep -nE '"type":[[:space:]]*"service_account"' \
-            -- . ':!*.md' ':!.github/'; then
+          if git grep -nE '"type":[[:space:]]*"service_account"' -- . ':!*.md'; then
             echo "::error::Potential GCP service account key detected."
             exit 1
           fi

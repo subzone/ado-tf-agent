@@ -25,10 +25,10 @@ Thanks for your interest in contributing!
 
 ```bash
 # Task
-cd tasks/Terraform && npm install && npm run build
+cd tasks/Terraform && npm ci && npm run build
 
 # UI
-cd ui && npm install && npm run build
+cd ui && npm ci && npm run build
 
 # Package VSIX
 npm run package
