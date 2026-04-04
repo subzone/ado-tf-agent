@@ -8,7 +8,6 @@ import {
 import "./planTab.css";
 
 const TF_PLAN_ATTACHMENT_TYPE = "terraform.plan.json";
-// Contribution ID from vss-extension.json: publisher.extensionId.contributionId
 const CONTRIBUTION_ID = "subzone.ado-tf-agent.terraform-plan-tab";
 
 interface ResourceChange {
@@ -135,107 +134,71 @@ async function showPlan(buildId: number): Promise<void> {
   void renderDiagram(buildMermaid(plan));
 }
 
+async function resolveBuildId(): Promise<number> {
+  // Strategy 1: onBuildChanged callback
+  const fromCallback = new Promise<number | undefined>((resolve) => {
+    try {
+      SDK.register(CONTRIBUTION_ID, {
+        onBuildChanged: (build: { id?: number }) => {
+          console.log("[TF] onBuildChanged:", JSON.stringify(build));
+          resolve(typeof build?.id === "number" ? build.id : undefined);
+        },
+      });
+    } catch (e) {
+      console.log("[TF] register failed:", e);
+      resolve(undefined);
+    }
+  });
+
+  // Strategy 2: BuildPageDataService polling (works once host SDK is active)
+  const fromService = (async (): Promise<number | undefined> => {
+    try {
+      const svc = await SDK.getService<IBuildPageDataService>(BuildServiceIds.BuildPageDataService);
+      for (let i = 0; i < 50; i++) {
+        const data = svc.getBuildPageData();
+        console.log(`[TF] BuildPageData attempt ${i}:`, JSON.stringify(data));
+        if (data?.build?.id) return data.build.id;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } catch (e) {
+      console.log("[TF] BuildPageDataService error:", e);
+    }
+    return undefined;
+  })();
+
+  const timeout = new Promise<undefined>(r => setTimeout(() => r(undefined), 12000));
+  const result = await Promise.race([fromCallback, fromService, timeout]);
+
+  if (result !== undefined) return result;
+
+  // Last resort: dump everything for diagnosis
+  console.log("[TF] All strategies failed. Final state:");
+  console.log("[TF] config:", JSON.stringify(SDK.getConfiguration()));
+  try { console.log("[TF] pageContext:", JSON.stringify(SDK.getPageContext())); } catch { /* */ }
+  throw new Error(
+    `Could not get build ID after all strategies.\ncontributionId: ${CONTRIBUTION_ID}\nconfig: ${JSON.stringify(SDK.getConfiguration())}`
+  );
+}
+
 async function main(): Promise<void> {
   const app = document.getElementById("app");
   if (!app) return;
 
   try {
-    // Create promise that resolves when host calls onBuildChanged
-    let onBuildId: (id: number) => void;
-    const buildIdFromCallback = new Promise<number>((resolve) => { onBuildId = resolve; });
-
-    const contributionCallback = {
-      onBuildChanged: (build: { id?: number }) => {
-        console.log("[TF] onBuildChanged:", JSON.stringify(build));
-        if (typeof build?.id === "number") onBuildId!(build.id);
-      },
-    };
-
-    // Register BEFORE init so the host can find our handler during handshake
-    // Use the global registry directly since we don't have the contribution ID yet
-    SDK.register(CONTRIBUTION_ID, contributionCallback);
-
     await SDK.init({ loaded: false, applyTheme: true });
     await SDK.ready();
 
-    // Also register with the actual contribution ID from the handshake
     try {
-      const actualId = SDK.getContributionId();
-      console.log("[TF] contributionId:", actualId);
-      if (actualId !== CONTRIBUTION_ID) {
-        SDK.register(actualId, contributionCallback);
-      }
-    } catch { /* ignore */ }
+      console.log("[TF] contributionId:", SDK.getContributionId());
+    } catch { /* */ }
 
     await SDK.notifyLoadSucceeded();
     console.log("[TF] ✓ SDK ready, notified host");
+    console.log("[TF] config:", JSON.stringify(SDK.getConfiguration()));
 
-    // Try multiple sources for build ID in parallel
-    const buildIdFromConfig = (): number | undefined => {
-      const cfg = SDK.getConfiguration() as Record<string, unknown>;
-      console.log("[TF] config:", JSON.stringify(cfg));
-      // Check nested build object
-      for (const key of ["build", "buildDetails"]) {
-        const obj = cfg[key];
-        if (obj && typeof obj === "object" && "id" in obj) {
-          const id = (obj as { id: unknown }).id;
-          if (typeof id === "number") return id;
-        }
-      }
-      if (typeof cfg.buildId === "number") return cfg.buildId;
-      // Parse from JSON blob
-      const m = JSON.stringify(cfg).match(/"id"\s*:\s*(\d+)/);
-      if (m) { const n = parseInt(m[1], 10); if (n > 0) return n; }
-      return undefined;
-    };
-
-    const buildIdFromService = async (): Promise<number | undefined> => {
-      try {
-        const svc = await SDK.getService<IBuildPageDataService>(BuildServiceIds.BuildPageDataService);
-        for (let i = 0; i < 30; i++) {
-          const data = svc.getBuildPageData();
-          if (data?.build?.id) return data.build.id;
-          await new Promise(r => setTimeout(r, 200));
-        }
-      } catch { /* not available */ }
-      return undefined;
-    };
-
-    // Check config first (instant)
-    const fromConfig = buildIdFromConfig();
-    if (fromConfig) {
-      await showPlan(fromConfig);
-      return;
-    }
-
-    // Race: callback vs service vs timeout
     app.innerHTML = `<p class="muted">Waiting for build context…</p>`;
-
-    const timeout = new Promise<undefined>(r => setTimeout(() => r(undefined), 10000));
-    const buildId = await Promise.race([
-      buildIdFromCallback,
-      buildIdFromService(),
-      timeout,
-    ]);
-
-    if (buildId) {
-      await showPlan(buildId);
-      return;
-    }
-
-    // Last resort: check config again (host may have updated it)
-    const fromConfigRetry = buildIdFromConfig();
-    if (fromConfigRetry) {
-      await showPlan(fromConfigRetry);
-      return;
-    }
-
-    throw new Error(
-      "Could not get build ID. The host did not provide build context.\n\n" +
-      "Debug: Open DevTools console and look for [TF] logs.\n" +
-      "contributionId: " + ((() => { try { return SDK.getContributionId(); } catch { return "unknown"; } })()) + "\n" +
-      "config: " + JSON.stringify(SDK.getConfiguration())
-    );
+    const buildId = await resolveBuildId();
+    await showPlan(buildId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : "";
