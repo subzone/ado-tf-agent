@@ -10,13 +10,14 @@
   "visibility": ["Build", "Release"],
   "demands": [],
   "version": {
-    "Major": 0,
-    "Minor": 1,
-    "Patch": 30
+    "Major": 1,
+    "Minor": 0,
+    "Patch": 0
+
   },
   "minimumAgentVersion": "2.206.1",
   "instanceNameFormat": "Terraform $(command)",
-  "releaseNotes": "Initial preview: core commands, multi-cloud backends, plan artifact for UI.",
+  "releaseNotes": "1.0.0 — Production release. Pipeline task (install/init/validate/plan/apply/show), multi-cloud backends (Azure/AWS/GCP), interactive plan tab with color-coded diffs, expandable attribute diffs, real dependency graph, policy warnings, filter/search, PR comment integration, and security hardening.",
   "groups": [
     {
       "name": "backendAzure",
