@@ -22,7 +22,7 @@ jobs:
 
       - name: Block private key markers
         run: |
-          if git grep -nE "BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY" -- . ':!.github/workflows/security.yml'; then
+          if git grep -nE "BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY" -- . ':!.github/workflows/security.yml'; then
             echo "::error::Potential private key material detected."
             exit 1
           fi

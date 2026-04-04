@@ -25,7 +25,7 @@ steps:
     displayName: Install Terraform
     inputs:
       command: install
-      terraformVersion: 1.9.0
+      terraformVersion: 1.7.5
 
   - task: subzone.ado-tf-agent.terraform-task.Terraform@0
     displayName: Terraform init

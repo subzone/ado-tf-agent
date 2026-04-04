@@ -6,7 +6,7 @@
 |---|---|
 | `vso.build` | Read build records and attachments for the plan tab |
 | `vso.build_execute` | Queue builds (pipeline task) |
-| `vso.code_write` | Post PR thread comments (only when `postPrComment: true`) |
+| `vso.code_write` | Post PR thread comments (always requested; only used when `postPrComment: true`) |
 
 ## Data flow
 
