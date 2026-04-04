@@ -47,14 +47,56 @@ function buildMermaid(plan: TerraformPlanJson): string {
   return lines.join("\n");
 }
 
+type ActionKind = "create" | "delete" | "update" | "replace" | "no-op" | "read";
+
+function classifyActions(actions: string[]): ActionKind {
+  if (actions.includes("create") && actions.includes("delete")) return "replace";
+  if (actions.includes("create")) return "create";
+  if (actions.includes("delete")) return "delete";
+  if (actions.includes("update")) return "update";
+  if (actions.includes("read"))   return "read";
+  return "no-op";
+}
+
+function actionBadge(actions: string[]): string {
+  const kind = classifyActions(actions);
+  const label: Record<ActionKind, string> = {
+    create:  "+  create",
+    delete:  "−  delete",
+    update:  "~  update",
+    replace: "±  replace",
+    read:    "○  read",
+    "no-op": "   no-op",
+  };
+  return `<span class="tf-badge tf-badge--${kind}">${label[kind]}</span>`;
+}
+
+function renderSummary(plan: TerraformPlanJson): string {
+  const counts: Record<ActionKind, number> = { create: 0, delete: 0, update: 0, replace: 0, read: 0, "no-op": 0 };
+  for (const rc of plan.resource_changes || []) {
+    counts[classifyActions(rc.change?.actions || [])]++;
+  }
+  const parts = [
+    counts.create  ? `<span class="tf-badge tf-badge--create">+${counts.create} add</span>`       : null,
+    counts.update  ? `<span class="tf-badge tf-badge--update">~${counts.update} change</span>`    : null,
+    counts.replace ? `<span class="tf-badge tf-badge--replace">±${counts.replace} replace</span>` : null,
+    counts.delete  ? `<span class="tf-badge tf-badge--delete">−${counts.delete} destroy</span>`   : null,
+    counts.read    ? `<span class="tf-badge tf-badge--read">○${counts.read} read</span>`           : null,
+  ].filter(Boolean);
+  if (!parts.length) return `<div class="tf-summary"><span class="tf-badge tf-badge--no-op">No changes</span></div>`;
+  return `<div class="tf-summary">${parts.join("")}</div>`;
+}
+
 function renderTable(plan: TerraformPlanJson): string {
-  const rows = (plan.resource_changes || []).map((rc) => {
-    const actions = (rc.change?.actions || []).join(", ");
-    return `<tr><td>${esc(rc.address || "")}</td><td>${esc(rc.type || "")}</td><td>${esc(actions)}</td></tr>`;
-  });
+  const changes = (plan.resource_changes || []).filter(
+    rc => classifyActions(rc.change?.actions || []) !== "no-op"
+  );
+  const rows = changes.map((rc) =>
+    `<tr><td>${esc(rc.address || "")}</td><td>${esc(rc.type || "")}</td><td>${actionBadge(rc.change?.actions || [])}</td></tr>`
+  );
   return `<table class="tf-table">
-    <thead><tr><th>Address</th><th>Type</th><th>Actions</th></tr></thead>
-    <tbody>${rows.join("") || '<tr><td colspan="3">No resource_changes in plan JSON.</td></tr>'}</tbody>
+    <thead><tr><th>Address</th><th>Type</th><th>Action</th></tr></thead>
+    <tbody>${rows.join("") || '<tr><td colspan="3">No resource changes.</td></tr>'}</tbody>
   </table>`;
 }
 
@@ -193,6 +235,7 @@ async function main(): Promise<void> {
         <p class="muted">${meta || "From plan attachment."} · Build <code>#${buildId}</code></p>
         <p class="muted">Resources: <code>${(plan.resource_changes || []).length}</code></p>
       </div>
+      ${renderSummary(plan)}
       <h3>Resource changes</h3>
       ${renderTable(plan)}
       <h3>Architecture sketch</h3>

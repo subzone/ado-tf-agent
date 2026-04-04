@@ -36,8 +36,31 @@ h3 {
   padding: 0;
 }
 
+.tf-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.tf-badge {
+  display: inline-block;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.tf-badge--create  { background: #dff6dd; color: #107c10; border: 1px solid #107c10; }
+.tf-badge--delete  { background: #fde7e9; color: #a4262c; border: 1px solid #a4262c; }
+.tf-badge--update  { background: #fff4ce; color: #7a5c00; border: 1px solid #c8a400; }
+.tf-badge--replace { background: #fff4ce; color: #7a5c00; border: 1px solid #c8a400; }
+.tf-badge--read    { background: #f0f0f0; color: #444;    border: 1px solid #bbb; }
+.tf-badge--no-op   { background: #f0f0f0; color: #888;    border: 1px solid #ccc; }
+
 .tf-table {
-  width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
   background: #fff;
