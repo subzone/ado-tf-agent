@@ -55,9 +55,5 @@ steps:
       publishPlanArtifact: true
       planArtifactName: terraform-plan
 
-  - task: subzone.ado-tf-agent.terraform-task.Terraform@0
-    displayName: Terraform apply (saved plan)
-    inputs:
-      command: apply
-      workingDirectory: $(tfWorkingDirectory)
-      planFile: tfplan
+  # apply is intentionally omitted — mock AWS credentials are used for plan-only demo.
+  # Add real credentials via env vars or a service connection to enable apply.
