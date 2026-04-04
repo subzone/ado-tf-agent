@@ -94,15 +94,47 @@ async function loadPlanJsonFromArtifact(
   buildId: number,
   artifactName: string,
 ): Promise<TerraformPlanJson> {
-  const buffer = await buildClient.getArtifactContentZip(project, buildId, artifactName);
+  console.log(`[Terraform] Calling buildClient.getArtifactContentZip(\"${project}\", ${buildId}, \"${artifactName}\")...`);
+  const bufferStart = performance.now();
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await buildClient.getArtifactContentZip(project, buildId, artifactName);
+    const bufferTime = performance.now() - bufferStart;
+    console.log(`[Terraform] ✓ Artifact ZIP buffer received in ${bufferTime.toFixed(0)}ms, size: ${buffer.byteLength} bytes`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[Terraform] ✗ Failed to fetch artifact ZIP:`, msg);
+    if (e instanceof Error && e.stack) {
+      console.error(`[Terraform] Stack:`, e.stack);
+    }
+    throw new Error(`Failed to download artifact "${artifactName}": ${msg}`);
+  }
+
+  console.log(`[Terraform] Parsing ZIP file...`);
+  const zipStart = performance.now();
   const zip = await JSZip.loadAsync(buffer);
+  const zipTime = performance.now() - zipStart;
+  console.log(`[Terraform] ✓ ZIP parsed in ${zipTime.toFixed(0)}ms`);
+
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
+  console.log(`[Terraform] ZIP contents (${names.length} files):`, names.slice(0, 10).join(", "), names.length > 10 ? `... +${names.length - 10} more` : "");
+
   const planPath = names.find((n) => n.endsWith("plan.json")) || names.find((n) => n === "plan.json");
   if (!planPath) {
+    console.error(`[Terraform] ✗ No plan.json found in artifact. Available files: ${names.join(", ") || "(empty)"}`);
     throw new Error(`No plan.json found inside artifact "${artifactName}". Files: ${names.join(", ") || "(empty)"}`);
   }
+  console.log(`[Terraform] Found plan file at: ${planPath}`);
+
+  console.log(`[Terraform] Extracting plan.json content...`);
   const text = await zip.files[planPath].async("string");
-  return JSON.parse(text) as TerraformPlanJson;
+  console.log(`[Terraform] ✓ plan.json extracted (${text.length} bytes)`);
+
+  console.log(`[Terraform] Parsing plan JSON...`);
+  const plan = JSON.parse(text) as TerraformPlanJson;
+  console.log(`[Terraform] ✓ plan.json parsed successfully`);
+
+  return plan;
 }
 
 /** Azure DevOps build pages use `?buildId=` on the parent URL; the iframe URL often has none. */
@@ -364,24 +396,41 @@ function resolveArtifactName(): string {
 async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
   const host = document.getElementById("tf-diagram-host");
   if (!host) {
+    console.error("[Terraform] ✗ diagram host element not found");
     return;
   }
+  console.log("[Terraform] Loading Mermaid and rendering diagram...");
   try {
+    const mermaidStart = performance.now();
     const mermaid = (await import("mermaid")).default;
+    const importTime = performance.now() - mermaidStart;
+    console.log(`[Terraform] ✓ Mermaid module loaded in ${importTime.toFixed(0)}ms`);
+
     mermaid.initialize({
       startOnLoad: false,
       theme: "default",
       securityLevel: "strict",
       flowchart: { useMaxWidth: true, htmlLabels: true },
     });
+    console.log("[Terraform] ✓ Mermaid initialized");
+
     const graph = document.createElement("div");
     graph.className = "mermaid";
     graph.textContent = diagramSource;
     host.innerHTML = "";
     host.appendChild(graph);
+    console.log("[Terraform] ✓ Mermaid diagram element added to DOM");
+
+    const renderStart = performance.now();
     await mermaid.run({ nodes: [graph] });
+    const renderTime = performance.now() - renderStart;
+    console.log(`[Terraform] ✓ Mermaid diagram rendered successfully in ${renderTime.toFixed(0)}ms`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    console.error("[Terraform] ✗ Diagram rendering failed:", msg);
+    if (e instanceof Error && e.stack) {
+      console.error("[Terraform] Stack:", e.stack);
+    }
     host.innerHTML = `<p class="muted">Diagram could not be rendered: ${escapeHtml(msg)}</p><pre class="tf-mermaid-fallback">${escapeHtml(
       diagramSource,
     )}</pre>`;
@@ -435,7 +484,15 @@ async function main(): Promise<void> {
     console.log(`[Terraform] Context: buildId=${buildId}, artifact=${artifactName}, project=${project.name}`);
 
     console.log("[Terraform] Creating BuildRestClient...");
-    const buildClient = getClient(BuildRestClient);
+    let buildClient: BuildRestClient;
+    try {
+      buildClient = getClient(BuildRestClient);
+      console.log("[Terraform] ✓ BuildRestClient created successfully");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Terraform] ✗ Failed to create BuildRestClient:", msg);
+      throw new Error(`Failed to initialize build client: ${msg}`);
+    }
 
     console.log(`[Terraform] Fetching artifact from Azure DevOps...`);
     const startArtifact = performance.now();
@@ -469,6 +526,7 @@ async function main(): Promise<void> {
       <p class="muted">Grouped from <code>resource_changes</code>. Diagram loads after this page appears.</p>
       <div class="diagram-wrap" id="tf-diagram-host"><p class="muted">Rendering diagram…</p></div>
     `;
+    console.log("[Terraform] ✓ Main content rendered to DOM");
 
     clearTimeout(timeoutHandle);
     console.log("[Terraform] ✓ Content rendered successfully");
