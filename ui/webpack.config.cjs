@@ -35,8 +35,5 @@ module.exports = {
       scriptLoading: "blocking",
     }),
   ],
-  externals: {
-    "azure-devops-extension-sdk": "VSS",
-    "azure-devops-extension-api": "VSS",
-  },
+  externals: {},
 };
