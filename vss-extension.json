@@ -4,10 +4,10 @@
   "version": "0.1.28",
   "name": "ADO Terraform Agent",
   "publisher": "subzone",
-  "description": "Terraform pipeline task (install, init, validate, plan, apply) with Azure/AWS/GCP remote state options, plus a build results tab for plan JSON and an architecture-style diagram.",
+  "description": "Terraform pipeline task with multi-cloud backends plus an interactive build results tab with color-coded diffs, expandable attribute changes, dependency graph, policy warnings and PR comments.",
   "public": true,
   "categories": ["Azure Pipelines"],
-  "tags": ["Terraform", "IaC", "Plan", "Azure", "AWS", "GCP"],
+  "tags": ["Terraform", "IaC", "Plan", "Visualization", "Azure", "AWS", "GCP", "Infrastructure", "DevOps"],
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"
@@ -16,7 +16,7 @@
   "icons": {
     "default": "images/extension-icon.png"
   },
-  "scopes": ["vso.build", "vso.build_execute"],
+  "scopes": ["vso.build", "vso.build_execute", "vso.code_write"],
   "content": {
     "details": {
       "path": "overview.md"

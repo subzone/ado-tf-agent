@@ -214,7 +214,109 @@ async function runTerraform(command: string, cwd: string, extraFromInput: string
 
 const TF_PLAN_ATTACHMENT_TYPE = "terraform.plan.json";
 
-async function publishPlanJson(cwd: string, planFile: string): Promise<void> {
+interface PlanSummary {
+  add: number; change: number; destroy: number; replace: number;
+  resources: Array<{ address: string; action: string }>;
+}
+
+function parsePlanSummary(jsonPath: string): PlanSummary {
+  const plan = JSON.parse(fs.readFileSync(jsonPath, "utf8")) as {
+    resource_changes?: Array<{
+      address?: string;
+      change?: { actions?: string[] };
+    }>;
+  };
+  const summary: PlanSummary = { add: 0, change: 0, destroy: 0, replace: 0, resources: [] };
+  for (const rc of plan.resource_changes || []) {
+    const actions = rc.change?.actions || [];
+    const addr = rc.address || "";
+    if (actions.includes("create") && actions.includes("delete")) {
+      summary.replace++; summary.resources.push({ address: addr, action: "replace" });
+    } else if (actions.includes("create")) {
+      summary.add++; summary.resources.push({ address: addr, action: "create" });
+    } else if (actions.includes("delete")) {
+      summary.destroy++; summary.resources.push({ address: addr, action: "delete" });
+    } else if (actions.includes("update")) {
+      summary.change++; summary.resources.push({ address: addr, action: "update" });
+    }
+  }
+  return summary;
+}
+
+function buildPrComment(summary: PlanSummary, buildId: string, buildUrl: string): string {
+  const badge = (n: number, label: string, emoji: string) =>
+    n > 0 ? `${emoji} **${n} ${label}**` : null;
+
+  const counts = [
+    badge(summary.add,     "to add",     "🟢"),
+    badge(summary.change,  "to change",  "🟡"),
+    badge(summary.replace, "to replace", "🟡"),
+    badge(summary.destroy, "to destroy", "🔴"),
+  ].filter(Boolean).join(" · ") || "✅ No changes";
+
+  const rows = summary.resources
+    .slice(0, 30)
+    .map(r => {
+      const icon = r.action === "create" ? "🟢" : r.action === "delete" ? "🔴" : "🟡";
+      return `| ${icon} | \`${r.address}\` | ${r.action} |`;
+    })
+    .join("\n");
+
+  const overflow = summary.resources.length > 30
+    ? `\n_…and ${summary.resources.length - 30} more resources_`
+    : "";
+
+  return [
+    `## 🏗️ Terraform Plan — Build [#${buildId}](${buildUrl})`,
+    "",
+    counts,
+    "",
+    "| | Resource | Action |",
+    "|---|---|---|",
+    rows,
+    overflow,
+    "",
+    `<sub>Posted by ADO Terraform Agent · [View full plan](${buildUrl})</sub>`,
+  ].join("\n");
+}
+
+async function postPrComment(comment: string): Promise<void> {
+  const collectionUri = tl.getVariable("System.CollectionUri") || "";
+  const project       = tl.getVariable("System.TeamProject") || "";
+  const repoId        = tl.getVariable("Build.Repository.ID") || "";
+  const prId          = tl.getVariable("System.PullRequest.PullRequestId");
+  const token         = tl.getVariable("System.AccessToken") || "";
+
+  if (!prId) {
+    console.log("Not a PR build — skipping comment.");
+    return;
+  }
+
+  const url = `${collectionUri}${project}/_apis/git/repositories/${repoId}/pullRequests/${prId}/threads?api-version=7.1`;
+
+  const body = JSON.stringify({
+    comments: [{ parentCommentId: 0, content: comment, commentType: 1 }],
+    status: 1,
+  });
+
+  const result = spawnSync("curl", [
+    "-s", "-X", "POST",
+    "-H", "Content-Type: application/json",
+    "-H", `Authorization: Bearer ${token}`,
+    "-d", body,
+    url,
+  ], { encoding: "utf8", windowsHide: true });
+
+  if (result.error) throw result.error;
+  const resp = JSON.parse(result.stdout || "{}") as { id?: number; message?: string };
+  if (resp.id) {
+    console.log(`PR comment posted (thread id ${resp.id}).`);
+  } else {
+    console.log("PR comment response:", result.stdout?.slice(0, 500));
+  }
+}
+
+async function publishPlanJson(cwd: string, planFile: string): Promise<string> {
   const staging = path.join(tl.getVariable("Agent.TempDirectory") || os.tmpdir(), "tf-plan-publish");
   fs.mkdirSync(staging, { recursive: true });
   const jsonPath = path.join(staging, "plan.json");
@@ -248,6 +350,7 @@ async function publishPlanJson(cwd: string, planFile: string): Promise<void> {
   // Attach to the build timeline record so the UI tab can read it via getAttachments()
   tl.addAttachment(TF_PLAN_ATTACHMENT_TYPE, "plan.json", jsonPath);
   console.log(`plan.json attached as type=${TF_PLAN_ATTACHMENT_TYPE}`);
+  return jsonPath;
 }
 
 async function main(): Promise<void> {
@@ -288,7 +391,15 @@ async function main(): Promise<void> {
       const publish = tl.getInput("publishPlanArtifact") !== "false";
       if (publish) {
         const planFile = (tl.getInput("planFile") || "tfplan").trim();
-        await publishPlanJson(cwd, planFile);
+        const jsonPath = await publishPlanJson(cwd, planFile);
+        const postComment = tl.getInput("postPrComment") === "true";
+        if (postComment) {
+          const buildId  = tl.getVariable("Build.BuildId") || "";
+          const buildUrl = `${tl.getVariable("System.CollectionUri")}${tl.getVariable("System.TeamProject")}/_build/results?buildId=${buildId}`;
+          const summary  = parsePlanSummary(jsonPath);
+          const comment  = buildPrComment(summary, buildId, buildUrl);
+          await postPrComment(comment);
+        }
       }
       tl.setResult(tl.TaskResult.Succeeded, "terraform plan completed.");
       return;

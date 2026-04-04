@@ -216,6 +216,16 @@
       "visibleRule": "command = plan"
     },
     {
+      "name": "postPrComment",
+      "type": "boolean",
+      "label": "Post plan summary as PR comment",
+      "defaultValue": "false",
+      "required": false,
+      "groupName": "planArtifact",
+      "visibleRule": "command = plan",
+      "helpMarkDown": "Posts a Markdown plan summary (add/change/destroy counts + resource table) as a pull request thread comment. Requires **Allow scripts to access the OAuth token** in the pipeline settings."
+    },
+    {
       "name": "additionalArguments",
       "type": "string",
       "label": "Additional arguments",
