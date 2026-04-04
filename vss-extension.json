@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "id": "ado-tf-agent",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "name": "ADO Terraform Agent",
   "publisher": "subzone",
   "description": "Terraform pipeline task (install, init, validate, plan, apply) with Azure/AWS/GCP remote state options, plus a build results tab for plan JSON and an architecture-style diagram.",
