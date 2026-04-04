@@ -4,9 +4,9 @@
   "name": "Terraform",
   "friendlyName": "Terraform (ADO TF Agent)",
   "description": "Install Terraform, manage remote state backends (Azure, AWS, GCP), and run init, validate, plan, and apply. Optionally publish a JSON plan for the build results visualization tab.",
-  "helpMarkDown": "[Repository](https://github.com/your-org/ado-tf-agent) — YAML: `subzone.ado-tf-agent.terraform-task.Terraform@0` (include **.Terraform** = task.json name). After **Plan**, enable **Publish plan JSON artifact** and open the **Terraform** tab on the build summary.",
+  "helpMarkDown": "[ADO Terraform Agent](https://github.com/subzone/ado-tf-agent) — YAML: `subzone.ado-tf-agent.terraform-task.Terraform@0`. After **plan**, enable **Publish plan JSON artifact** and open the **Terraform** tab on the build run summary to see resource changes and architecture diagram.",
   "category": "Deploy",
-  "author": "Your Team",
+  "author": "subzone",
   "visibility": ["Build", "Release"],
   "demands": [],
   "version": {

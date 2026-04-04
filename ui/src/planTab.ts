@@ -391,21 +391,34 @@ async function renderDiagramWhenReady(diagramSource: string): Promise<void> {
 async function main(): Promise<void> {
   const startTime = performance.now();
   const timeoutMs = 30000;
+  const app = document.getElementById("app");
+
   const timeoutHandle = setTimeout(() => {
-    const app = document.getElementById("app");
     if (app) {
       app.innerHTML = `<div class="error"><strong>Loading timeout</strong><p>The Terraform plan is taking longer than expected to load. This usually means:</p><ul><li>The artifact is large or network is slow</li><li>Azure DevOps services are under heavy load</li><li>Try refreshing the page</li></ul></div>`;
     }
   }, timeoutMs);
 
   try {
-    await SDK.init({ loaded: false, applyTheme: true });
+    if (!app) {
+      throw new Error("Missing #app root element.");
+    }
+
+    // Initialize SDK and get context
+    try {
+      await SDK.init({ loaded: false, applyTheme: true });
+    } catch (e) {
+      // SDK already initialized warning is harmless
+      console.warn("[Terraform] SDK init warning:", e instanceof Error ? e.message : String(e));
+    }
+
     await SDK.ready();
 
     const project = SDK.getWebContext().project;
     if (!project?.name) {
-      throw new Error("Project context is not available.");
+      throw new Error("Project context is not available. Open this tab from a build run summary page (Pipelines → Run → Summary → Terraform tab).");
     }
+
     const buildId = await resolveBuildId();
     const artifactName = resolveArtifactName();
     console.log(`[Terraform] Resolved buildId=${buildId}, artifactName=${artifactName}, project=${project.name}`);
@@ -414,12 +427,6 @@ async function main(): Promise<void> {
     const plan = await loadPlanJsonFromArtifact(buildClient, project.name, buildId, artifactName);
     const artifactLoadTime = performance.now() - startTime;
     console.log(`[Terraform] Loaded plan with ${(plan.resource_changes || []).length} resources in ${artifactLoadTime.toFixed(0)}ms`);
-
-    const app = document.getElementById("app");
-    if (!app) {
-      await SDK.notifyLoadFailed("Missing #app root element.");
-      return;
-    }
 
     const meta = [
       plan.terraform_version ? `Terraform ${escapeHtml(plan.terraform_version)}` : null,
