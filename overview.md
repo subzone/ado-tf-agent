@@ -71,6 +71,22 @@ That's it. You'll see the plan summary, change table, policy warnings, and depen
 
 ---
 
+## 📸 Screenshots
+
+### Resource list and summary bar
+
+![Plan overview with resource list](images/screenshot-plan-overview.png)
+
+### Color-coded change table with expandable diffs
+
+![Change table](images/screenshot-change-table.png)
+
+### Real dependency graph
+
+![Dependency graph](images/screenshot-dependency-graph.png)
+
+---
+
 ## 📋 Plan visualization
 
 ### Summary bar
