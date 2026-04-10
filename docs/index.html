@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADO Terraform Agent — Terraform for Azure DevOps</title>
+  <meta name="description" content="Azure DevOps extension for Terraform — pipeline task with multi-cloud backends + interactive plan visualization with diffs, dependency graphs, and policy checks.">
+  <link rel="icon" type="image/png" href="images/extension-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface-2:   #21262d;
+      --surface-3:   #2d333b;
+      --border:      #30363d;
+      --border-2:    #3d444d;
+      --text:        #e6edf3;
+      --text-muted:  #8b949e;
+      --text-dim:    #656d76;
+      --purple:      #7c3aed;
+      --purple-l:    #a855f7;
+      --purple-xl:   #c084fc;
+      --purple-glow: rgba(124,58,237,0.25);
+      --cyan:        #22d3ee;
+      --cyan-d:      #0891b2;
+      --green:       #22c55e;
+      --green-d:     #15803d;
+      --yellow:      #f59e0b;
+      --red:         #ef4444;
+      --orange:      #f97316;
+      --blue:        #3b82f6;
+      --r: .75rem;
+      --r-lg: 1rem;
+      --r-xl: 1.5rem;
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+      --shadow-lg: 0 4px 24px rgba(0,0,0,.5), 0 16px 48px rgba(0,0,0,.4);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    ::selection { background: var(--purple-glow); color: var(--text); }
+    :focus-visible { outline: 2px solid var(--purple-l); outline-offset: 2px; }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ─── NAV ─────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .875rem 2rem;
+      background: rgba(13,17,23,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex; align-items: center; gap: .6rem;
+      font-weight: 700; font-size: 1rem; letter-spacing: -.02em;
+    }
+    .nav-logo img { width: 28px; height: 28px; border-radius: 6px; }
+    .nav-logo span { color: var(--purple-xl); }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 1.75rem;
+      font-size: .875rem; color: var(--text-muted);
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .nav-actions { display: flex; align-items: center; gap: .75rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .45rem 1rem;
+      border-radius: var(--r);
+      font-size: .875rem; font-weight: 500;
+      cursor: pointer; border: none; transition: all .15s;
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border-2);
+      color: var(--text-muted);
+    }
+    .btn-ghost:hover { border-color: var(--border); color: var(--text); background: var(--surface-2); }
+
+    .btn-primary {
+      background: var(--purple);
+      color: #fff;
+      box-shadow: 0 0 0 0 var(--purple-glow);
+    }
+    .btn-primary:hover {
+      background: var(--purple-l);
+      box-shadow: 0 0 20px var(--purple-glow);
+    }
+
+    /* ─── HERO ────────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      padding: 6rem 2rem 5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      max-width: 1200px; margin: 0 auto;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px; left: -200px; right: -200px;
+      height: 600px;
+      background: radial-gradient(ellipse 80% 60% at 30% 40%, rgba(124,58,237,.15) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 40% at 70% 20%, rgba(34,211,238,.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .3rem .75rem;
+      background: rgba(124,58,237,.15);
+      border: 1px solid rgba(124,58,237,.35);
+      border-radius: 100px;
+      font-size: .75rem; font-weight: 600;
+      color: var(--purple-xl);
+      margin-bottom: 1.25rem;
+      letter-spacing: .04em; text-transform: uppercase;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.03em;
+      margin-bottom: 1.25rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--purple-xl) 0%, var(--cyan) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.075rem;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin-bottom: 2rem;
+      line-height: 1.7;
+    }
+
+    .hero-cta { display: flex; gap: .75rem; flex-wrap: wrap; }
+
+    .btn-lg { padding: .7rem 1.5rem; font-size: .95rem; border-radius: var(--r-lg); }
+
+    /* Plan preview card */
+    .hero-preview {
+      position: relative;
+      border-radius: var(--r-xl);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      box-shadow: var(--shadow-lg), 0 0 60px rgba(124,58,237,.12);
+      overflow: hidden;
+      animation: float 6s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .preview-topbar {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .75rem 1rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .preview-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .preview-topbar-title {
+      margin-left: auto; margin-right: auto;
+      font-size: .75rem; color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .preview-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding: 0 1rem;
+      background: var(--surface);
+    }
+    .preview-tab {
+      padding: .6rem 1rem;
+      font-size: .75rem;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      cursor: default;
+    }
+    .preview-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--purple-l);
+    }
+
+    .preview-body { padding: 1rem; }
+
+    .preview-summary {
+      display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .preview-badge {
+      display: flex; align-items: center; gap: .35rem;
+      padding: .25rem .65rem;
+      border-radius: 100px;
+      font-size: .7rem; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-create { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.25); }
+    .badge-change { background: rgba(245,158,11,.15); color: var(--yellow); border: 1px solid rgba(245,158,11,.25); }
+    .badge-replace{ background: rgba(249,115,22,.15); color: var(--orange); border: 1px solid rgba(249,115,22,.25); }
+    .badge-destroy{ background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.25); }
+
+    .preview-table { width: 100%; border-collapse: collapse; font-size: .7rem; }
+    .preview-table th {
+      text-align: left; color: var(--text-dim);
+      padding: .3rem .5rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 500; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .preview-table td {
+      padding: .45rem .5rem;
+      border-bottom: 1px solid rgba(48,54,61,.5);
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-muted);
+    }
+    .preview-table tr:last-child td { border-bottom: none; }
+    .preview-table .addr { color: var(--text); font-weight: 500; }
+    .act { display: inline-block; padding: .15rem .45rem; border-radius: 4px; font-size: .65rem; font-weight: 700; }
+    .act-create { background: rgba(34,197,94,.2); color: var(--green); }
+    .act-update { background: rgba(245,158,11,.2); color: var(--yellow); }
+    .act-destroy{ background: rgba(239,68,68,.2); color: var(--red); }
+    .act-read   { background: rgba(59,130,246,.2); color: var(--blue); }
+
+    /* ─── SECTION WRAPPER ─────────────────────────────────────────── */
+    section { padding: 5rem 2rem; }
+    .section-inner { max-width: 1200px; margin: 0 auto; }
+
+    .section-label {
+      display: inline-block;
+      font-size: .7rem; font-weight: 700;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--purple-l);
+      margin-bottom: .75rem;
+    }
+    .section-title {
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      margin-bottom: 1rem;
+    }
+    .section-sub {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 580px;
+      line-height: 1.7;
+    }
+    .section-header { margin-bottom: 3.5rem; }
+
+    /* ─── FEATURES ────────────────────────────────────────────────── */
+    #features { background: rgba(22,27,34,.5); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .feature-card {
+      padding: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      transition: border-color .2s, transform .2s;
+    }
+    .feature-card:hover { border-color: rgba(124,58,237,.4); transform: translateY(-2px); }
+
+    .feature-icon {
+      width: 40px; height: 40px;
+      border-radius: var(--r);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: .45rem; }
+    .feature-card p { font-size: .875rem; color: var(--text-muted); line-height: 1.65; }
+
+    .tag-list { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
+    .tag {
+      padding: .15rem .5rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: .7rem; color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ─── CONFIGURATOR ────────────────────────────────────────────── */
+    #configurator { border-bottom: 1px solid var(--border); }
+
+    .configurator-grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .config-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      overflow: hidden;
+    }
+
+    .config-panel-header {
+      padding: 1rem 1.25rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600; font-size: .875rem;
+    }
+
+    .config-panel-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    /* Command tabs */
+    .cmd-tabs {
+      display: flex; flex-wrap: wrap; gap: .4rem;
+    }
+    .cmd-tab {
+      padding: .35rem .8rem;
+      border: 1px solid var(--border-2);
+      border-radius: var(--r);
+      font-size: .8rem; font-weight: 500;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      transition: all .15s;
+    }
+    .cmd-tab:hover { color: var(--text); border-color: var(--border); }
+    .cmd-tab.active {
+      background: var(--purple);
+      border-color: var(--purple);
+      color: #fff;
+    }
+
+    /* Form fields */
+    .field-group { display: flex; flex-direction: column; gap: .35rem; }
+    .field-label {
+      font-size: .75rem; font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: .02em;
+    }
+    .field-label span { color: var(--text-dim); font-weight: 400; }
+
+    .field-input {
+      width: 100%;
+      padding: .55rem .75rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+      transition: border-color .15s;
+    }
+    .field-input:focus { border-color: var(--purple-l); outline: none; }
+    .field-input::placeholder { color: var(--text-dim); }
+
+    select.field-input { cursor: pointer; }
+    option { background: var(--surface-2); }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .6rem .75rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+    }
+    .toggle-info { flex: 1; }
+    .toggle-info strong { display: block; font-size: .8rem; font-weight: 600; }
+    .toggle-info small { font-size: .72rem; color: var(--text-muted); }
+
+    .toggle {
+      position: relative; width: 36px; height: 20px;
+      flex-shrink: 0; margin-left: .75rem;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: var(--surface-3); border-radius: 100px;
+      cursor: pointer; transition: background .2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: white; top: 3px; left: 3px;
+      transition: transform .2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--purple); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+    /* Backend tabs */
+    .backend-tabs {
+      display: flex; gap: .35rem; flex-wrap: wrap;
+    }
+    .backend-tab {
+      padding: .25rem .65rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      font-size: .72rem; font-weight: 600;
+      cursor: pointer;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      transition: all .15s;
+    }
+    .backend-tab:hover { color: var(--text); }
+    .backend-tab.active { background: var(--cyan-d); border-color: var(--cyan-d); color: #fff; }
+
+    .field-section { display: flex; flex-direction: column; gap: .75rem; }
+    .field-section-title {
+      font-size: .7rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--text-dim);
+      padding-bottom: .4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hidden { display: none !important; }
+
+    /* YAML output panel */
+    .yaml-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-xl);
+      overflow: hidden;
+      position: sticky; top: 80px;
+    }
+
+    .yaml-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .875rem 1.25rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+    .yaml-panel-title { font-weight: 600; font-size: .875rem; }
+
+    .yaml-actions { display: flex; gap: .5rem; }
+
+    .btn-sm { padding: .3rem .7rem; font-size: .75rem; border-radius: 6px; }
+
+    .btn-copy {
+      background: var(--surface-3);
+      border: 1px solid var(--border-2);
+      color: var(--text-muted);
+    }
+    .btn-copy:hover { color: var(--text); }
+    .btn-copy.copied { background: rgba(34,197,94,.15); border-color: rgba(34,197,94,.3); color: var(--green); }
+
+    .btn-workflow {
+      background: rgba(124,58,237,.15);
+      border: 1px solid rgba(124,58,237,.3);
+      color: var(--purple-xl);
+    }
+    .btn-workflow:hover { background: rgba(124,58,237,.25); }
+
+    .yaml-body {
+      padding: 1.25rem;
+      overflow-x: auto;
+      min-height: 320px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    pre.yaml-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      line-height: 1.7;
+      white-space: pre;
+      color: var(--text);
+    }
+
+    /* YAML syntax colors */
+    .y-key    { color: #79c0ff; }
+    .y-str    { color: #a5d6ff; }
+    .y-bool-t { color: var(--green); }
+    .y-bool-f { color: var(--red); }
+    .y-num    { color: #f8c555; }
+    .y-comment{ color: var(--text-dim); font-style: italic; }
+    .y-sep    { color: var(--text-dim); }
+    .y-dash   { color: var(--purple-l); }
+
+    /* ─── SCREENSHOTS ─────────────────────────────────────────────── */
+    #gallery { background: rgba(22,27,34,.3); border-bottom: 1px solid var(--border); }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .gallery-item {
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: transform .2s, box-shadow .2s;
+      cursor: default;
+    }
+    .gallery-item:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .gallery-img-wrap {
+      position: relative;
+      background: var(--surface-2);
+      overflow: hidden;
+    }
+    .gallery-img-wrap img {
+      width: 100%;
+      display: block;
+      transition: transform .3s;
+    }
+    .gallery-item:hover .gallery-img-wrap img { transform: scale(1.02); }
+
+    .gallery-info {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .gallery-info h3 { font-size: .9rem; font-weight: 700; margin-bottom: .3rem; }
+    .gallery-info p { font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
+
+    /* ─── QUICK START ─────────────────────────────────────────────── */
+    #quickstart { border-bottom: 1px solid var(--border); }
+
+    .qs-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .qs-step {
+      display: flex; gap: 1rem;
+      align-items: flex-start;
+    }
+
+    .qs-num {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--purple-glow);
+      border: 1px solid rgba(124,58,237,.4);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: .875rem;
+      color: var(--purple-xl);
+    }
+
+    .qs-step h3 { font-size: .95rem; font-weight: 700; margin-bottom: .35rem; }
+    .qs-step p { font-size: .825rem; color: var(--text-muted); line-height: 1.65; }
+
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+    }
+    .code-block-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .6rem 1rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      font-size: .75rem; color: var(--text-muted);
+    }
+    .code-block pre {
+      padding: 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      line-height: 1.7;
+      overflow-x: auto;
+    }
+
+    /* ─── FOOTER ──────────────────────────────────────────────────── */
+    footer {
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .footer-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem;
+    }
+    .footer-logo {
+      display: flex; align-items: center; gap: .5rem;
+      font-weight: 700; font-size: .9rem;
+    }
+    .footer-logo img { width: 22px; height: 22px; border-radius: 4px; }
+    .footer-links { display: flex; gap: 1.25rem; font-size: .825rem; color: var(--text-muted); }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { font-size: .8rem; color: var(--text-dim); }
+
+    /* ─── DIVIDER ─────────────────────────────────────────────────── */
+    .gradient-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--purple), transparent);
+      opacity: .4;
+    }
+
+    /* ─── SCROLLBAR ───────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* ─── RESPONSIVE ──────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 3.5rem 1.25rem 3rem; }
+      .hero-preview { max-width: 480px; }
+      .configurator-grid { grid-template-columns: 1fr; }
+      .yaml-panel { position: static; }
+      nav { padding: .75rem 1.25rem; }
+      .nav-links { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      section { padding: 3.5rem 1.25rem; }
+      .hero h1 { font-size: 2rem; }
+    }
+
+    /* ─── ANIMATIONS ──────────────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeInUp .5s ease both; }
+    .fade-in-2 { animation: fadeInUp .5s ease .1s both; }
+    .fade-in-3 { animation: fadeInUp .5s ease .2s both; }
+
+    /* counter animation */
+    .count-num { display: inline-block; }
+
+    /* glow pulse on hero badge */
+    @keyframes pulse-border {
+      0%, 100% { border-color: rgba(124,58,237,.35); }
+      50% { border-color: rgba(124,58,237,.7); }
+    }
+    .hero-badge { animation: pulse-border 3s ease-in-out infinite; }
+
+    /* Tab content transitions */
+    .cmd-section { transition: opacity .2s; }
+  </style>
+</head>
+<body>
+
+<!-- ─── NAV ──────────────────────────────────────────────────────────── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <img src="images/extension-icon.png" alt="ADO Terraform Agent">
+    <span>ADO</span>&nbsp;Terraform&nbsp;Agent
+  </a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#configurator">Configurator</a>
+    <a href="#gallery">Screenshots</a>
+    <a href="#quickstart">Quick Start</a>
+  </div>
+  <div class="nav-actions">
+    <a href="https://github.com/subzone/ado-tf-agent" class="btn btn-ghost btn-sm" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=subzone.ado-tf-agent" class="btn btn-primary btn-sm" target="_blank" rel="noopener">
+      Get Extension
+    </a>
+  </div>
+</nav>
+
+<!-- ─── HERO ──────────────────────────────────────────────────────────── -->
+<div style="max-width:1200px;margin:0 auto;overflow:hidden">
+<section class="hero">
+  <div>
+    <div class="hero-badge fade-in">
+      <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="currentColor"/></svg>
+      Azure DevOps Extension · v1.0.4
+    </div>
+    <h1 class="fade-in-2">Terraform Plans,<br><em>Visualized</em> in<br>Azure DevOps</h1>
+    <p class="fade-in-3">One pipeline task for <strong>install → init → validate → plan → apply</strong>. See color-coded diffs, dependency graphs, and policy warnings right inside your build tab. Multi-cloud. Zero friction.</p>
+    <div class="hero-cta fade-in-3">
+      <a href="#configurator" class="btn btn-primary btn-lg">Build Your Pipeline ↓</a>
+      <a href="https://marketplace.visualstudio.com/items?itemName=subzone.ado-tf-agent" class="btn btn-ghost btn-lg" target="_blank" rel="noopener">View on Marketplace</a>
+    </div>
+  </div>
+
+  <!-- Animated plan preview -->
+  <div class="hero-preview fade-in-3">
+    <div class="preview-topbar">
+      <div class="preview-dot" style="background:#ff5f56"></div>
+      <div class="preview-dot" style="background:#ffbd2e"></div>
+      <div class="preview-dot" style="background:#27c93f"></div>
+      <span class="preview-topbar-title">Azure DevOps · Build #516</span>
+    </div>
+    <div class="preview-tabs">
+      <div class="preview-tab">Summary</div>
+      <div class="preview-tab">Logs</div>
+      <div class="preview-tab active">🟣 Terraform</div>
+      <div class="preview-tab">Tests</div>
+    </div>
+    <div class="preview-body">
+      <div class="preview-summary">
+        <span class="preview-badge badge-create">+ <span id="c1" class="count-num">0</span> create</span>
+        <span class="preview-badge badge-change">~ <span id="c2" class="count-num">0</span> change</span>
+        <span class="preview-badge badge-replace">↺ <span id="c3" class="count-num">0</span> replace</span>
+        <span class="preview-badge badge-destroy">− <span id="c4" class="count-num">0</span> destroy</span>
+      </div>
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>Resource address</th>
+            <th>Type</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="addr">aws_vpc.main</td><td>aws_vpc</td><td><span class="act act-create">+ create</span></td></tr>
+          <tr><td class="addr">aws_subnet.public[0]</td><td>aws_subnet</td><td><span class="act act-create">+ create</span></td></tr>
+          <tr><td class="addr">aws_subnet.public[1]</td><td>aws_subnet</td><td><span class="act act-create">+ create</span></td></tr>
+          <tr><td class="addr">aws_security_group.web</td><td>aws_security_group</td><td><span class="act act-create">+ create</span></td></tr>
+          <tr><td class="addr">aws_instance.app</td><td>aws_instance</td><td><span class="act act-update">~ update</span></td></tr>
+          <tr><td class="addr">aws_s3_bucket.state</td><td>aws_s3_bucket</td><td><span class="act act-update">~ update</span></td></tr>
+          <tr><td class="addr">aws_rds_cluster.primary</td><td>aws_rds_cluster</td><td><span class="act act-destroy">- destroy</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+</div>
+
+<div class="gradient-divider"></div>
+
+<!-- ─── FEATURES ──────────────────────────────────────────────────────── -->
+<section id="features">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-label">What you get</span>
+      <h2 class="section-title">Everything Terraform needs<br>in Azure DevOps</h2>
+      <p class="section-sub">A complete solution from provisioning Terraform on the agent to rendering rich plan output — without leaving your pipeline.</p>
+    </div>
+    <div class="features-grid">
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(124,58,237,.15)">🚀</div>
+        <h3>Full Lifecycle Pipeline Task</h3>
+        <p>One task, six commands. Install a specific Terraform version, configure remote state, validate configurations, plan and apply — all in a consistent, reusable step.</p>
+        <div class="tag-list">
+          <span class="tag">install</span>
+          <span class="tag">init</span>
+          <span class="tag">validate</span>
+          <span class="tag">plan</span>
+          <span class="tag">apply</span>
+          <span class="tag">show</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(34,211,238,.15)">☁️</div>
+        <h3>Multi-Cloud State Backends</h3>
+        <p>Native support for Azure Blob Storage, AWS S3 (with DynamoDB locking), and Google Cloud Storage. Or bring your own backend config file for any other provider.</p>
+        <div class="tag-list">
+          <span class="tag">azurerm</span>
+          <span class="tag">s3</span>
+          <span class="tag">gcs</span>
+          <span class="tag">custom</span>
+        </div>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(34,197,94,.15)">📊</div>
+        <h3>Interactive Plan Visualization</h3>
+        <p>A dedicated build results tab renders your <code style="font-family:monospace;font-size:.8em;color:var(--cyan)">plan.json</code> as a filterable table with color-coded actions, expandable before/after attribute diffs, and resource counts.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(249,115,22,.15)">🔗</div>
+        <h3>Real Dependency Graph</h3>
+        <p>Automatically derives the actual resource dependency graph from <code style="font-family:monospace;font-size:.8em;color:var(--cyan)">configuration.references</code> in your plan and renders it as a Mermaid flowchart.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(239,68,68,.15)">🛡️</div>
+        <h3>Built-in Policy Checks</h3>
+        <p>Scans planned resources for 10+ security misconfigurations: public S3 buckets, open security groups, unencrypted RDS/EBS, IAM wildcards, Azure public access, and more.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(59,130,246,.15)">💬</div>
+        <h3>PR Comment Integration</h3>
+        <p>Automatically post a Markdown plan summary as a pull request thread comment so reviewers see add/change/destroy counts and resource details before approving.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── CONFIGURATOR ──────────────────────────────────────────────────── -->
+<section id="configurator">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-label">Pipeline Builder</span>
+      <h2 class="section-title">Build your pipeline YAML</h2>
+      <p class="section-sub">Configure a task step interactively. The YAML updates live — copy it straight into your <code style="font-family:monospace;font-size:.85em;color:var(--cyan)">azure-pipelines.yml</code>.</p>
+    </div>
+
+    <div class="configurator-grid">
+      <!-- LEFT: form -->
+      <div class="config-panel">
+        <div class="config-panel-header">⚙️ Configure Step</div>
+        <div class="config-panel-body">
+
+          <!-- Command selector -->
+          <div class="field-group">
+            <div class="field-label">Command</div>
+            <div class="cmd-tabs">
+              <button class="cmd-tab" data-cmd="install">install</button>
+              <button class="cmd-tab" data-cmd="init">init</button>
+              <button class="cmd-tab" data-cmd="validate">validate</button>
+              <button class="cmd-tab active" data-cmd="plan">plan</button>
+              <button class="cmd-tab" data-cmd="apply">apply</button>
+              <button class="cmd-tab" data-cmd="show">show</button>
+            </div>
+          </div>
+
+          <!-- Display name -->
+          <div class="field-group">
+            <label class="field-label" for="displayName">Display name <span>(optional)</span></label>
+            <input class="field-input" type="text" id="displayName" placeholder="Terraform plan" value="Terraform plan">
+          </div>
+
+          <!-- Working directory -->
+          <div class="field-group">
+            <label class="field-label" for="workingDir">Working directory <span>(optional)</span></label>
+            <input class="field-input" type="text" id="workingDir" placeholder="$(System.DefaultWorkingDirectory)/infra">
+          </div>
+
+          <!-- ── install only ── -->
+          <div class="cmd-section hidden" id="sec-install">
+            <div class="field-group">
+              <label class="field-label" for="tfVersion">Terraform version</label>
+              <input class="field-input" type="text" id="tfVersion" value="1.7.5" placeholder="1.7.5">
+            </div>
+          </div>
+
+          <!-- ── init only ── -->
+          <div class="cmd-section hidden" id="sec-init">
+            <div class="field-section">
+              <div class="field-section-title">Backend</div>
+              <div class="field-group">
+                <div class="field-label">Backend type</div>
+                <div class="backend-tabs">
+                  <button class="backend-tab active" data-backend="local">local</button>
+                  <button class="backend-tab" data-backend="azurerm">Azure</button>
+                  <button class="backend-tab" data-backend="s3">AWS S3</button>
+                  <button class="backend-tab" data-backend="gcs">GCS</button>
+                  <button class="backend-tab" data-backend="custom">custom</button>
+                </div>
+              </div>
+
+              <div class="hidden" id="backend-azurerm">
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="azRg">Resource group</label>
+                  <input class="field-input" type="text" id="azRg" placeholder="my-tfstate-rg">
+                </div>
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="azSa">Storage account</label>
+                  <input class="field-input" type="text" id="azSa" placeholder="mytfstateaccount">
+                </div>
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="azContainer">Container</label>
+                  <input class="field-input" type="text" id="azContainer" placeholder="tfstate">
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="azKey">State key</label>
+                  <input class="field-input" type="text" id="azKey" placeholder="prod/terraform.tfstate">
+                </div>
+              </div>
+
+              <div class="hidden" id="backend-s3">
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="awsBucket">S3 bucket</label>
+                  <input class="field-input" type="text" id="awsBucket" placeholder="my-terraform-state">
+                </div>
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="awsKey">State key</label>
+                  <input class="field-input" type="text" id="awsKey" placeholder="prod/terraform.tfstate">
+                </div>
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="awsRegion">Region</label>
+                  <input class="field-input" type="text" id="awsRegion" placeholder="us-east-1">
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="awsDynamo">DynamoDB lock table <span>(optional)</span></label>
+                  <input class="field-input" type="text" id="awsDynamo" placeholder="terraform-state-lock">
+                </div>
+              </div>
+
+              <div class="hidden" id="backend-gcs">
+                <div class="field-group" style="margin-bottom:.6rem">
+                  <label class="field-label" for="gcsBucket">GCS bucket</label>
+                  <input class="field-input" type="text" id="gcsBucket" placeholder="my-tf-state-bucket">
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="gcsPrefix">Prefix <span>(optional)</span></label>
+                  <input class="field-input" type="text" id="gcsPrefix" placeholder="prod/terraform">
+                </div>
+              </div>
+
+              <div class="hidden" id="backend-custom">
+                <div class="field-group">
+                  <label class="field-label" for="backendFile">Backend config file</label>
+                  <input class="field-input" type="text" id="backendFile" placeholder="backend.hcl">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── plan / apply / show ── -->
+          <div class="cmd-section hidden" id="sec-planfile">
+            <div class="field-group">
+              <label class="field-label" for="planFile">Plan file name</label>
+              <input class="field-input" type="text" id="planFile" value="tfplan" placeholder="tfplan">
+            </div>
+          </div>
+
+          <!-- ── plan only ── -->
+          <div class="cmd-section hidden" id="sec-plan">
+            <div class="field-section">
+              <div class="field-section-title">Plan visualization</div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <strong>Publish plan artifact</strong>
+                  <small>Uploads plan.json to the build · enables the Terraform tab</small>
+                </div>
+                <label class="toggle" for="publishArtifact">
+                  <input type="checkbox" id="publishArtifact" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div id="artifactNameWrap" class="field-group">
+                <label class="field-label" for="artifactName">Artifact name</label>
+                <input class="field-input" type="text" id="artifactName" value="terraform-plan" placeholder="terraform-plan">
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <strong>Post PR comment</strong>
+                  <small>Posts plan summary to pull request thread</small>
+                </div>
+                <label class="toggle" for="postPr">
+                  <input type="checkbox" id="postPr">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Additional arguments (all commands) -->
+          <div class="field-group">
+            <label class="field-label" for="extraArgs">Additional arguments <span>(optional)</span></label>
+            <input class="field-input" type="text" id="extraArgs" placeholder="-var-file=prod.tfvars">
+          </div>
+
+        </div>
+      </div>
+
+      <!-- RIGHT: YAML output -->
+      <div class="yaml-panel">
+        <div class="yaml-panel-header">
+          <span class="yaml-panel-title">📋 Generated YAML</span>
+          <div class="yaml-actions">
+            <button class="btn btn-sm btn-workflow" id="btnWorkflow">Full Workflow</button>
+            <button class="btn btn-sm btn-copy" id="btnCopy">Copy</button>
+          </div>
+        </div>
+        <div class="yaml-body">
+          <pre class="yaml-code" id="yamlOutput"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── GALLERY ───────────────────────────────────────────────────────── -->
+<section id="gallery">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-label">See it in action</span>
+      <h2 class="section-title">What the build tab looks like</h2>
+      <p class="section-sub">The Terraform tab appears automatically on any build that publishes a plan artifact — no extra configuration needed.</p>
+    </div>
+    <div class="gallery-grid">
+      <div class="gallery-item">
+        <div class="gallery-img-wrap">
+          <img src="images/screenshot-plan-overview.png" alt="Plan overview tab" loading="lazy">
+        </div>
+        <div class="gallery-info">
+          <h3>Plan Overview</h3>
+          <p>At-a-glance summary with create / change / replace / destroy counts and the full resource list.</p>
+        </div>
+      </div>
+      <div class="gallery-item">
+        <div class="gallery-img-wrap">
+          <img src="images/screenshot-change-table.png" alt="Change table with diffs" loading="lazy">
+        </div>
+        <div class="gallery-info">
+          <h3>Expandable Attribute Diffs</h3>
+          <p>Click any resource to expand a full before/after attribute comparison with type-aware formatting.</p>
+        </div>
+      </div>
+      <div class="gallery-item">
+        <div class="gallery-img-wrap">
+          <img src="images/screenshot-dependency-graph.png" alt="Dependency graph" loading="lazy">
+        </div>
+        <div class="gallery-info">
+          <h3>Dependency Graph</h3>
+          <p>Mermaid-rendered flowchart derived from real <code style="font-family:monospace;font-size:.85em">configuration.references</code> in the plan JSON.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── QUICK START ───────────────────────────────────────────────────── -->
+<section id="quickstart">
+  <div class="section-inner">
+    <div class="section-header">
+      <span class="section-label">Get started</span>
+      <h2 class="section-title">Up and running in minutes</h2>
+    </div>
+
+    <div class="qs-steps">
+      <div class="qs-step">
+        <div class="qs-num">1</div>
+        <div>
+          <h3>Install the extension</h3>
+          <p>Search for <strong>ADO Terraform Agent</strong> in the Visual Studio Marketplace and install it to your Azure DevOps organization. No tokens or credentials required.</p>
+        </div>
+      </div>
+      <div class="qs-step">
+        <div class="qs-num">2</div>
+        <div>
+          <h3>Add pipeline steps</h3>
+          <p>Drop the task into your <code style="font-family:monospace;font-size:.85em;color:var(--cyan)">azure-pipelines.yml</code>. Use the configurator above to generate the exact YAML for your setup.</p>
+        </div>
+      </div>
+      <div class="qs-step">
+        <div class="qs-num">3</div>
+        <div>
+          <h3>Run — and click the Terraform tab</h3>
+          <p>After the pipeline runs, open the build summary. A <strong>Terraform</strong> tab appears automatically with the full plan visualization.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <span>azure-pipelines.yml — complete example</span>
+        <button class="btn btn-sm btn-copy" id="btnCopyFull">Copy</button>
+      </div>
+      <pre id="fullExampleCode" style="padding:1.25rem;font-family:'JetBrains Mono',monospace;font-size:.75rem;line-height:1.75;color:var(--text-muted);overflow-x:auto"><span style="color:var(--text-dim)"># azure-pipelines.yml</span>
+<span style="color:#79c0ff">trigger</span>:
+  <span style="color:#79c0ff">branches</span>:
+    <span style="color:#79c0ff">include</span>: [<span style="color:#a5d6ff">main</span>]
+
+<span style="color:#79c0ff">pool</span>:
+  <span style="color:#79c0ff">vmImage</span>: <span style="color:#a5d6ff">ubuntu-latest</span>
+
+<span style="color:#79c0ff">steps</span>:
+  <span style="color:var(--purple-l)">-</span> <span style="color:#79c0ff">task</span>: <span style="color:#a5d6ff">subzone.ado-tf-agent.terraform-task.Terraform@0</span>
+    <span style="color:#79c0ff">displayName</span>: <span style="color:#a5d6ff">Terraform install</span>
+    <span style="color:#79c0ff">inputs</span>:
+      <span style="color:#79c0ff">command</span>: <span style="color:#a5d6ff">install</span>
+      <span style="color:#79c0ff">terraformVersion</span>: <span style="color:#a5d6ff">'1.7.5'</span>
+
+  <span style="color:var(--purple-l)">-</span> <span style="color:#79c0ff">task</span>: <span style="color:#a5d6ff">subzone.ado-tf-agent.terraform-task.Terraform@0</span>
+    <span style="color:#79c0ff">displayName</span>: <span style="color:#a5d6ff">Terraform init</span>
+    <span style="color:#79c0ff">inputs</span>:
+      <span style="color:#79c0ff">command</span>: <span style="color:#a5d6ff">init</span>
+      <span style="color:#79c0ff">workingDirectory</span>: <span style="color:#a5d6ff">'$(System.DefaultWorkingDirectory)/infra'</span>
+      <span style="color:#79c0ff">backendType</span>: <span style="color:#a5d6ff">azurerm</span>
+      <span style="color:#79c0ff">azureResourceGroup</span>: <span style="color:#a5d6ff">my-tfstate-rg</span>
+      <span style="color:#79c0ff">azureStorageAccount</span>: <span style="color:#a5d6ff">mytfstateaccount</span>
+      <span style="color:#79c0ff">azureContainer</span>: <span style="color:#a5d6ff">tfstate</span>
+      <span style="color:#79c0ff">azureStateKey</span>: <span style="color:#a5d6ff">prod/terraform.tfstate</span>
+
+  <span style="color:var(--purple-l)">-</span> <span style="color:#79c0ff">task</span>: <span style="color:#a5d6ff">subzone.ado-tf-agent.terraform-task.Terraform@0</span>
+    <span style="color:#79c0ff">displayName</span>: <span style="color:#a5d6ff">Terraform validate</span>
+    <span style="color:#79c0ff">inputs</span>:
+      <span style="color:#79c0ff">command</span>: <span style="color:#a5d6ff">validate</span>
+
+  <span style="color:var(--purple-l)">-</span> <span style="color:#79c0ff">task</span>: <span style="color:#a5d6ff">subzone.ado-tf-agent.terraform-task.Terraform@0</span>
+    <span style="color:#79c0ff">displayName</span>: <span style="color:#a5d6ff">Terraform plan</span>
+    <span style="color:#79c0ff">inputs</span>:
+      <span style="color:#79c0ff">command</span>: <span style="color:#a5d6ff">plan</span>
+      <span style="color:#79c0ff">workingDirectory</span>: <span style="color:#a5d6ff">'$(System.DefaultWorkingDirectory)/infra'</span>
+      <span style="color:#79c0ff">publishPlanArtifact</span>: <span style="color:var(--green)">true</span>
+      <span style="color:#79c0ff">postPrComment</span>: <span style="color:var(--green)">true</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <img src="images/extension-icon.png" alt="">
+      ADO Terraform Agent
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/subzone/ado-tf-agent" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://marketplace.visualstudio.com/items?itemName=subzone.ado-tf-agent" target="_blank" rel="noopener">Marketplace</a>
+      <a href="https://github.com/subzone/ado-tf-agent/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      <a href="https://github.com/subzone/ado-tf-agent/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+    <div class="footer-copy">MIT License · Built with ❤️ for the DevOps community</div>
+  </div>
+</footer>
+
+<script>
+// ─── Counter animation ────────────────────────────────────────────────
+function animateCount(el, target, duration = 1200) {
+  let start = 0;
+  const step = target / (duration / 16);
+  const tick = () => {
+    start = Math.min(start + step, target);
+    el.textContent = Math.floor(start);
+    if (start < target) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    animateCount(document.getElementById('c1'), 4);
+    animateCount(document.getElementById('c2'), 2);
+    animateCount(document.getElementById('c3'), 1);
+    animateCount(document.getElementById('c4'), 1);
+  }, 400);
+});
+
+// ─── Configurator ────────────────────────────────────────────────────
+const TASK_ID = 'subzone.ado-tf-agent.terraform-task.Terraform@0';
+
+let state = {
+  command: 'plan',
+  displayName: 'Terraform plan',
+  workingDir: '',
+  tfVersion: '1.7.5',
+  backendType: 'local',
+  azRg: '', azSa: '', azContainer: '', azKey: '',
+  awsBucket: '', awsKey: '', awsRegion: '', awsDynamo: '',
+  gcsBucket: '', gcsPrefix: '',
+  backendFile: '',
+  planFile: 'tfplan',
+  publishArtifact: true,
+  artifactName: 'terraform-plan',
+  postPr: false,
+  extraArgs: '',
+};
+
+// Command tab click
+document.querySelectorAll('.cmd-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cmd-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.command = btn.dataset.cmd;
+    const dname = document.getElementById('displayName');
+    if (!dname.dataset.edited) dname.value = 'Terraform ' + state.command;
+    updateSections();
+    renderYaml();
+  });
+});
+
+// Backend tab click
+document.querySelectorAll('.backend-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.backend-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.backendType = btn.dataset.backend;
+    updateBackendSections();
+    renderYaml();
+  });
+});
+
+// Input listeners
+[
+  ['displayName', v => { state.displayName = v; document.getElementById('displayName').dataset.edited = v ? '1' : ''; }],
+  ['workingDir', v => state.workingDir = v],
+  ['tfVersion', v => state.tfVersion = v],
+  ['azRg', v => state.azRg = v],
+  ['azSa', v => state.azSa = v],
+  ['azContainer', v => state.azContainer = v],
+  ['azKey', v => state.azKey = v],
+  ['awsBucket', v => state.awsBucket = v],
+  ['awsKey', v => state.awsKey = v],
+  ['awsRegion', v => state.awsRegion = v],
+  ['awsDynamo', v => state.awsDynamo = v],
+  ['gcsBucket', v => state.gcsBucket = v],
+  ['gcsPrefix', v => state.gcsPrefix = v],
+  ['backendFile', v => state.backendFile = v],
+  ['planFile', v => state.planFile = v],
+  ['artifactName', v => state.artifactName = v],
+  ['extraArgs', v => state.extraArgs = v],
+].forEach(([id, setter]) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', e => { setter(e.target.value); renderYaml(); });
+});
+
+['publishArtifact', 'postPr'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', e => {
+    state[id] = e.target.checked;
+    if (id === 'publishArtifact') {
+      document.getElementById('artifactNameWrap').style.opacity = e.target.checked ? '1' : '.4';
+    }
+    renderYaml();
+  });
+});
+
+function updateSections() {
+  const cmd = state.command;
+  document.getElementById('sec-install').classList.toggle('hidden', cmd !== 'install');
+  document.getElementById('sec-init').classList.toggle('hidden', cmd !== 'init');
+  document.getElementById('sec-planfile').classList.toggle('hidden', !['plan','apply','show'].includes(cmd));
+  document.getElementById('sec-plan').classList.toggle('hidden', cmd !== 'plan');
+}
+
+function updateBackendSections() {
+  ['azurerm','s3','gcs','custom'].forEach(type => {
+    const el = document.getElementById('backend-' + type);
+    if (el) el.classList.toggle('hidden', state.backendType !== type);
+  });
+}
+
+// ─── YAML builder ────────────────────────────────────────────────────
+// HTML-escape for safe innerHTML injection
+function escHtml(v) {
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// YAML single-quoted scalar escape: ' → ''
+function escYaml(v) { return String(v).replace(/'/g, "''"); }
+// Wrap a user value in a YAML single-quoted scalar
+function yamlStr(v) { return `'${escYaml(v)}'`; }
+
+function buildInputs() {
+  const lines = [];
+  const cmd = state.command;
+
+  // displayName is handled in the task header, not in inputs
+  lines.push(['command', cmd]);
+
+  if (state.workingDir) lines.push(['workingDirectory', yamlStr(state.workingDir)]);
+  if (cmd === 'install' && state.tfVersion) lines.push(['terraformVersion', yamlStr(state.tfVersion)]);
+
+  if (cmd === 'init') {
+    if (state.backendType && state.backendType !== 'local') {
+      lines.push(['backendType', state.backendType]);
+    }
+    if (state.backendType === 'azurerm') {
+      if (state.azRg) lines.push(['azureResourceGroup', yamlStr(state.azRg)]);
+      if (state.azSa) lines.push(['azureStorageAccount', yamlStr(state.azSa)]);
+      if (state.azContainer) lines.push(['azureContainer', yamlStr(state.azContainer)]);
+      if (state.azKey) lines.push(['azureStateKey', yamlStr(state.azKey)]);
+    }
+    if (state.backendType === 's3') {
+      if (state.awsBucket) lines.push(['awsBucket', yamlStr(state.awsBucket)]);
+      if (state.awsKey) lines.push(['awsKey', yamlStr(state.awsKey)]);
+      if (state.awsRegion) lines.push(['awsRegion', yamlStr(state.awsRegion)]);
+      if (state.awsDynamo) lines.push(['awsDynamoDbTable', yamlStr(state.awsDynamo)]);
+    }
+    if (state.backendType === 'gcs') {
+      if (state.gcsBucket) lines.push(['gcpBucket', yamlStr(state.gcsBucket)]);
+      if (state.gcsPrefix) lines.push(['gcpPrefix', yamlStr(state.gcsPrefix)]);
+    }
+    if (state.backendType === 'custom') {
+      if (state.backendFile) lines.push(['backendConfigFile', yamlStr(state.backendFile)]);
+    }
+  }
+
+  if (['plan','apply','show'].includes(cmd) && state.planFile && state.planFile !== 'tfplan') {
+    lines.push(['planFile', yamlStr(state.planFile)]);
+  }
+
+  if (cmd === 'plan') {
+    if (!state.publishArtifact) lines.push(['publishPlanArtifact', 'false']);
+    if (state.publishArtifact && state.artifactName && state.artifactName !== 'terraform-plan') {
+      lines.push(['planArtifactName', yamlStr(state.artifactName)]);
+    }
+    if (state.postPr) lines.push(['postPrComment', 'true']);
+  }
+
+  if (state.extraArgs) lines.push(['additionalArguments', yamlStr(state.extraArgs)]);
+
+  return lines;
+}
+
+function renderValue(v) {
+  if (v === 'true') return `<span class="y-bool-t">true</span>`;
+  if (v === 'false') return `<span class="y-bool-f">false</span>`;
+  if (/^\d+(\.\d+)?$/.test(v)) return `<span class="y-num">${escHtml(v)}</span>`;
+  return `<span class="y-str">${escHtml(v)}</span>`;
+}
+
+function renderStep(inputs, displayName) {
+  const name = displayName || ('Terraform ' + state.command);
+  let out = `<span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(TASK_ID)}</span>\n`;
+  out += `  <span class="y-key">displayName</span>: <span class="y-str">${escHtml(yamlStr(name))}</span>\n`;
+  out += `  <span class="y-key">inputs</span>:\n`;
+  inputs.forEach(([k, v]) => {
+    out += `    <span class="y-key">${escHtml(k)}</span>: ${renderValue(v)}\n`;
+  });
+  return out;
+}
+
+function renderYaml() {
+  const inputs = buildInputs();
+  const html = renderStep(inputs, state.displayName);
+  document.getElementById('yamlOutput').innerHTML = html;
+}
+
+// Full workflow generator
+document.getElementById('btnWorkflow').addEventListener('click', () => {
+  const taskId = TASK_ID;
+  const wd = state.workingDir || '$(System.DefaultWorkingDirectory)/infra';
+  const ver = state.tfVersion || '1.7.5';
+
+  let html = `<span class="y-comment"># azure-pipelines.yml — complete Terraform workflow</span>\n`;
+  html += `<span class="y-key">steps</span>:\n\n`;
+
+  // install
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
+  html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform install'</span>\n`;
+  html += `    <span class="y-key">inputs</span>:\n`;
+  html += `      <span class="y-key">command</span>: <span class="y-str">install</span>\n`;
+  html += `      <span class="y-key">terraformVersion</span>: <span class="y-str">${escHtml(yamlStr(ver))}</span>\n\n`;
+
+  // init
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
+  html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform init'</span>\n`;
+  html += `    <span class="y-key">inputs</span>:\n`;
+  html += `      <span class="y-key">command</span>: <span class="y-str">init</span>\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n`;
+
+  if (state.backendType && state.backendType !== 'local') {
+    html += `      <span class="y-key">backendType</span>: <span class="y-str">${escHtml(state.backendType)}</span>\n`;
+    if (state.backendType === 'azurerm') {
+      if (state.azRg) html += `      <span class="y-key">azureResourceGroup</span>: <span class="y-str">${escHtml(yamlStr(state.azRg))}</span>\n`;
+      if (state.azSa) html += `      <span class="y-key">azureStorageAccount</span>: <span class="y-str">${escHtml(yamlStr(state.azSa))}</span>\n`;
+      if (state.azContainer) html += `      <span class="y-key">azureContainer</span>: <span class="y-str">${escHtml(yamlStr(state.azContainer))}</span>\n`;
+      if (state.azKey) html += `      <span class="y-key">azureStateKey</span>: <span class="y-str">${escHtml(yamlStr(state.azKey))}</span>\n`;
+    }
+  }
+  html += '\n';
+
+  // validate
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
+  html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform validate'</span>\n`;
+  html += `    <span class="y-key">inputs</span>:\n`;
+  html += `      <span class="y-key">command</span>: <span class="y-str">validate</span>\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n\n`;
+
+  // plan
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
+  html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform plan'</span>\n`;
+  html += `    <span class="y-key">inputs</span>:\n`;
+  html += `      <span class="y-key">command</span>: <span class="y-str">plan</span>\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n`;
+  html += `      <span class="y-key">publishPlanArtifact</span>: <span class="y-bool-t">true</span>\n`;
+  if (state.postPr) html += `      <span class="y-key">postPrComment</span>: <span class="y-bool-t">true</span>\n`;
+  if (state.extraArgs) html += `      <span class="y-key">additionalArguments</span>: <span class="y-str">${escHtml(yamlStr(state.extraArgs))}</span>\n`;
+
+  document.getElementById('yamlOutput').innerHTML = html;
+});
+
+// Copy button
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+document.getElementById('btnCopy').addEventListener('click', function() {
+  const text = document.getElementById('yamlOutput').innerText;
+  copyText(text, this);
+});
+
+document.getElementById('btnCopyFull').addEventListener('click', function() {
+  const text = document.getElementById('fullExampleCode').innerText;
+  copyText(text, this);
+});
+
+// Init
+updateSections();
+updateBackendSections();
+renderYaml();
+</script>
+</body>
+</html>
