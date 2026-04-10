@@ -42,6 +42,14 @@
 
     html { scroll-behavior: smooth; }
 
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+
     body {
       font-family: 'Inter', system-ui, sans-serif;
       background: var(--bg);
@@ -953,30 +961,30 @@
           <div class="cmd-section hidden" id="sec-plan">
             <div class="field-section">
               <div class="field-section-title">Plan visualization</div>
-              <label class="toggle-row">
+              <div class="toggle-row">
                 <div class="toggle-info">
                   <strong>Publish plan artifact</strong>
                   <small>Uploads plan.json to the build · enables the Terraform tab</small>
                 </div>
-                <label class="toggle">
+                <label class="toggle" for="publishArtifact">
                   <input type="checkbox" id="publishArtifact" checked>
                   <span class="toggle-slider"></span>
                 </label>
-              </label>
+              </div>
               <div id="artifactNameWrap" class="field-group">
                 <label class="field-label" for="artifactName">Artifact name</label>
                 <input class="field-input" type="text" id="artifactName" value="terraform-plan" placeholder="terraform-plan">
               </div>
-              <label class="toggle-row">
+              <div class="toggle-row">
                 <div class="toggle-info">
                   <strong>Post PR comment</strong>
                   <small>Posts plan summary to pull request thread</small>
                 </div>
-                <label class="toggle">
+                <label class="toggle" for="postPr">
                   <input type="checkbox" id="postPr">
                   <span class="toggle-slider"></span>
                 </label>
-              </label>
+              </div>
             </div>
           </div>
 
@@ -1258,56 +1266,68 @@ function updateBackendSections() {
 }
 
 // ─── YAML builder ────────────────────────────────────────────────────
-function esc(v) { return String(v); }
+// HTML-escape for safe innerHTML injection
+function escHtml(v) {
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+// YAML single-quoted scalar escape: ' → ''
+function escYaml(v) { return String(v).replace(/'/g, "''"); }
+// Wrap a user value in a YAML single-quoted scalar
+function yamlStr(v) { return `'${escYaml(v)}'`; }
 
 function buildInputs() {
   const lines = [];
   const cmd = state.command;
 
+  // displayName is handled in the task header, not in inputs
   lines.push(['command', cmd]);
-  if (state.displayName) {} // handled in task header
 
-  if (state.workingDir) lines.push(['workingDirectory', `'${esc(state.workingDir)}'`]);
-  if (cmd === 'install' && state.tfVersion) lines.push(['terraformVersion', `'${esc(state.tfVersion)}'`]);
+  if (state.workingDir) lines.push(['workingDirectory', yamlStr(state.workingDir)]);
+  if (cmd === 'install' && state.tfVersion) lines.push(['terraformVersion', yamlStr(state.tfVersion)]);
 
   if (cmd === 'init') {
     if (state.backendType && state.backendType !== 'local') {
       lines.push(['backendType', state.backendType]);
     }
     if (state.backendType === 'azurerm') {
-      if (state.azRg) lines.push(['azureResourceGroup', state.azRg]);
-      if (state.azSa) lines.push(['azureStorageAccount', state.azSa]);
-      if (state.azContainer) lines.push(['azureContainer', state.azContainer]);
-      if (state.azKey) lines.push(['azureStateKey', state.azKey]);
+      if (state.azRg) lines.push(['azureResourceGroup', yamlStr(state.azRg)]);
+      if (state.azSa) lines.push(['azureStorageAccount', yamlStr(state.azSa)]);
+      if (state.azContainer) lines.push(['azureContainer', yamlStr(state.azContainer)]);
+      if (state.azKey) lines.push(['azureStateKey', yamlStr(state.azKey)]);
     }
     if (state.backendType === 's3') {
-      if (state.awsBucket) lines.push(['awsBucket', state.awsBucket]);
-      if (state.awsKey) lines.push(['awsKey', state.awsKey]);
-      if (state.awsRegion) lines.push(['awsRegion', state.awsRegion]);
-      if (state.awsDynamo) lines.push(['awsDynamoDbTable', state.awsDynamo]);
+      if (state.awsBucket) lines.push(['awsBucket', yamlStr(state.awsBucket)]);
+      if (state.awsKey) lines.push(['awsKey', yamlStr(state.awsKey)]);
+      if (state.awsRegion) lines.push(['awsRegion', yamlStr(state.awsRegion)]);
+      if (state.awsDynamo) lines.push(['awsDynamoDbTable', yamlStr(state.awsDynamo)]);
     }
     if (state.backendType === 'gcs') {
-      if (state.gcsBucket) lines.push(['gcpBucket', state.gcsBucket]);
-      if (state.gcsPrefix) lines.push(['gcpPrefix', state.gcsPrefix]);
+      if (state.gcsBucket) lines.push(['gcpBucket', yamlStr(state.gcsBucket)]);
+      if (state.gcsPrefix) lines.push(['gcpPrefix', yamlStr(state.gcsPrefix)]);
     }
     if (state.backendType === 'custom') {
-      if (state.backendFile) lines.push(['backendConfigFile', `'${esc(state.backendFile)}'`]);
+      if (state.backendFile) lines.push(['backendConfigFile', yamlStr(state.backendFile)]);
     }
   }
 
   if (['plan','apply','show'].includes(cmd) && state.planFile && state.planFile !== 'tfplan') {
-    lines.push(['planFile', state.planFile]);
+    lines.push(['planFile', yamlStr(state.planFile)]);
   }
 
   if (cmd === 'plan') {
     if (!state.publishArtifact) lines.push(['publishPlanArtifact', 'false']);
     if (state.publishArtifact && state.artifactName && state.artifactName !== 'terraform-plan') {
-      lines.push(['planArtifactName', state.artifactName]);
+      lines.push(['planArtifactName', yamlStr(state.artifactName)]);
     }
     if (state.postPr) lines.push(['postPrComment', 'true']);
   }
 
-  if (state.extraArgs) lines.push(['additionalArguments', `'${esc(state.extraArgs)}'`]);
+  if (state.extraArgs) lines.push(['additionalArguments', yamlStr(state.extraArgs)]);
 
   return lines;
 }
@@ -1315,17 +1335,17 @@ function buildInputs() {
 function renderValue(v) {
   if (v === 'true') return `<span class="y-bool-t">true</span>`;
   if (v === 'false') return `<span class="y-bool-f">false</span>`;
-  if (/^\d+(\.\d+)?$/.test(v) && !v.startsWith("'")) return `<span class="y-num">${v}</span>`;
-  return `<span class="y-str">${v}</span>`;
+  if (/^\d+(\.\d+)?$/.test(v)) return `<span class="y-num">${escHtml(v)}</span>`;
+  return `<span class="y-str">${escHtml(v)}</span>`;
 }
 
 function renderStep(inputs, displayName) {
   const name = displayName || ('Terraform ' + state.command);
-  let out = `<span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${TASK_ID}</span>\n`;
-  out += `  <span class="y-key">displayName</span>: <span class="y-str">'${esc(name)}'</span>\n`;
+  let out = `<span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(TASK_ID)}</span>\n`;
+  out += `  <span class="y-key">displayName</span>: <span class="y-str">${escHtml(yamlStr(name))}</span>\n`;
   out += `  <span class="y-key">inputs</span>:\n`;
   inputs.forEach(([k, v]) => {
-    out += `    <span class="y-key">${k}</span>: ${renderValue(v)}\n`;
+    out += `    <span class="y-key">${escHtml(k)}</span>: ${renderValue(v)}\n`;
   });
   return out;
 }
@@ -1346,46 +1366,46 @@ document.getElementById('btnWorkflow').addEventListener('click', () => {
   html += `<span class="y-key">steps</span>:\n\n`;
 
   // install
-  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${taskId}</span>\n`;
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
   html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform install'</span>\n`;
   html += `    <span class="y-key">inputs</span>:\n`;
   html += `      <span class="y-key">command</span>: <span class="y-str">install</span>\n`;
-  html += `      <span class="y-key">terraformVersion</span>: <span class="y-str">'${ver}'</span>\n\n`;
+  html += `      <span class="y-key">terraformVersion</span>: <span class="y-str">${escHtml(yamlStr(ver))}</span>\n\n`;
 
   // init
-  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${taskId}</span>\n`;
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
   html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform init'</span>\n`;
   html += `    <span class="y-key">inputs</span>:\n`;
   html += `      <span class="y-key">command</span>: <span class="y-str">init</span>\n`;
-  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">'${esc(wd)}'</span>\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n`;
 
   if (state.backendType && state.backendType !== 'local') {
-    html += `      <span class="y-key">backendType</span>: <span class="y-str">${state.backendType}</span>\n`;
+    html += `      <span class="y-key">backendType</span>: <span class="y-str">${escHtml(state.backendType)}</span>\n`;
     if (state.backendType === 'azurerm') {
-      if (state.azRg) html += `      <span class="y-key">azureResourceGroup</span>: <span class="y-str">${state.azRg}</span>\n`;
-      if (state.azSa) html += `      <span class="y-key">azureStorageAccount</span>: <span class="y-str">${state.azSa}</span>\n`;
-      if (state.azContainer) html += `      <span class="y-key">azureContainer</span>: <span class="y-str">${state.azContainer}</span>\n`;
-      if (state.azKey) html += `      <span class="y-key">azureStateKey</span>: <span class="y-str">${state.azKey}</span>\n`;
+      if (state.azRg) html += `      <span class="y-key">azureResourceGroup</span>: <span class="y-str">${escHtml(yamlStr(state.azRg))}</span>\n`;
+      if (state.azSa) html += `      <span class="y-key">azureStorageAccount</span>: <span class="y-str">${escHtml(yamlStr(state.azSa))}</span>\n`;
+      if (state.azContainer) html += `      <span class="y-key">azureContainer</span>: <span class="y-str">${escHtml(yamlStr(state.azContainer))}</span>\n`;
+      if (state.azKey) html += `      <span class="y-key">azureStateKey</span>: <span class="y-str">${escHtml(yamlStr(state.azKey))}</span>\n`;
     }
   }
   html += '\n';
 
   // validate
-  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${taskId}</span>\n`;
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
   html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform validate'</span>\n`;
   html += `    <span class="y-key">inputs</span>:\n`;
   html += `      <span class="y-key">command</span>: <span class="y-str">validate</span>\n`;
-  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">'${esc(wd)}'</span>\n\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n\n`;
 
   // plan
-  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${taskId}</span>\n`;
+  html += `  <span class="y-dash">-</span> <span class="y-key">task</span>: <span class="y-str">${escHtml(taskId)}</span>\n`;
   html += `    <span class="y-key">displayName</span>: <span class="y-str">'Terraform plan'</span>\n`;
   html += `    <span class="y-key">inputs</span>:\n`;
   html += `      <span class="y-key">command</span>: <span class="y-str">plan</span>\n`;
-  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">'${esc(wd)}'</span>\n`;
+  html += `      <span class="y-key">workingDirectory</span>: <span class="y-str">${escHtml(yamlStr(wd))}</span>\n`;
   html += `      <span class="y-key">publishPlanArtifact</span>: <span class="y-bool-t">true</span>\n`;
   if (state.postPr) html += `      <span class="y-key">postPrComment</span>: <span class="y-bool-t">true</span>\n`;
-  if (state.extraArgs) html += `      <span class="y-key">additionalArguments</span>: <span class="y-str">'${esc(state.extraArgs)}'</span>\n`;
+  if (state.extraArgs) html += `      <span class="y-key">additionalArguments</span>: <span class="y-str">${escHtml(yamlStr(state.extraArgs))}</span>\n`;
 
   document.getElementById('yamlOutput').innerHTML = html;
 });
