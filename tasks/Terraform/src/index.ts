@@ -375,7 +375,17 @@ async function postAzureReposComment(comment: string, prId: string): Promise<voi
 async function postGitHubComment(comment: string, prNumber: string): Promise<void> {
   // For GitHub PRs, System.PullRequest.PullRequestNumber contains the GitHub PR number
   const repoUri = tl.getVariable("Build.Repository.Uri") || "";
-  const token = tl.getVariable("System.AccessToken") || "";
+  
+  // GitHub requires a GitHub PAT, not System.AccessToken (which is an ADO token)
+  // Check for GITHUB_TOKEN variable, SYSTEM_ACCESSTOKEN won't work for GitHub API
+  let token = tl.getVariable("GITHUB_TOKEN") || tl.getVariable("GITHUB_PAT") || "";
+  
+  if (!token) {
+    console.log("##vso[task.logissue type=warning]GitHub PR comments require a GITHUB_TOKEN or GITHUB_PAT pipeline variable with 'repo' scope.");
+    console.log("Set a pipeline variable named GITHUB_TOKEN with a GitHub Personal Access Token.");
+    console.log("See: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token");
+    return;
+  }
   
   // Extract owner/repo from GitHub URL (e.g., https://github.com/owner/repo or git@github.com:owner/repo.git)
   const match = repoUri.match(/github\.com[:/]([^/]+)\/([^/.]+)/);

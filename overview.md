@@ -228,8 +228,14 @@ Post a formatted plan summary as a pull request thread comment automatically.
 
 ### Setup
 
+**For Azure Repos:**
 1. Enable **Allow scripts to access the OAuth token** in your pipeline settings (Edit pipeline → ··· → Triggers → uncheck "Limit job authorization scope").
-2. Add `postPrComment: true` to your plan step:
+
+**For GitHub:**
+1. Create a [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) with `repo` scope
+2. Add it as a **secret** pipeline variable named `GITHUB_TOKEN`
+
+**Then add to your pipeline:**
 
 ```yaml
 - task: subzone.ado-tf-agent.terraform-task.Terraform@0

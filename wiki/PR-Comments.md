@@ -29,9 +29,25 @@ In your pipeline settings, enable **Allow scripts to access the OAuth token**.
 | Provider | What's needed |
 |----------|--------------|
 | **Azure Repos** | `System.AccessToken` with `vso.code_write` scope (enabled via "Allow scripts to access the OAuth token") |
-| **GitHub** | `System.AccessToken` with GitHub API access, or GitHub App/PAT configured in the pipeline |
+| **GitHub** | Pipeline variable `GITHUB_TOKEN` or `GITHUB_PAT` with a [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) that has `repo` scope |
 
 The task automatically detects the repository provider and uses the appropriate API.
+
+### GitHub Setup
+
+1. Create a GitHub Personal Access Token:
+   - Go to GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
+   - Generate new token with `repo` scope
+   - Copy the token
+
+2. Add the token as a pipeline variable:
+   - In Azure Pipelines, go to your pipeline → Edit → Variables
+   - Add a new variable named `GITHUB_TOKEN`
+   - Paste your GitHub PAT as the value
+   - **Mark it as secret** 🔒
+   - Save
+
+3. The task will automatically use this token for GitHub API calls
 
 ## What the comment looks like
 
