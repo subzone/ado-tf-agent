@@ -2,11 +2,15 @@
 
 Automatically post a formatted plan summary as a pull request thread comment.
 
+**Supports:** Azure Repos (Azure DevOps Git) and GitHub repositories.
+
 ## Setup
 
 ### 1. Enable OAuth token access
 
 In your pipeline settings, enable **Allow scripts to access the OAuth token**.
+
+**For GitHub repositories:** You also need to configure a GitHub service connection with the necessary permissions, or ensure the pipeline's `System.AccessToken` has access to post comments via GitHub API.
 
 ### 2. Add `postPrComment: true`
 
@@ -19,6 +23,15 @@ In your pipeline settings, enable **Allow scripts to access the OAuth token**.
     publishPlanArtifact: true
     postPrComment: true
 ```
+
+## Supported Repository Providers
+
+| Provider | What's needed |
+|----------|--------------|
+| **Azure Repos** | `System.AccessToken` with `vso.code_write` scope (enabled via "Allow scripts to access the OAuth token") |
+| **GitHub** | `System.AccessToken` with GitHub API access, or GitHub App/PAT configured in the pipeline |
+
+The task automatically detects the repository provider and uses the appropriate API.
 
 ## What the comment looks like
 

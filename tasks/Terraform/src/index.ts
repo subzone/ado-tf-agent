@@ -299,22 +299,13 @@ function buildPrComment(summary: PlanSummary, buildId: string, buildUrl: string)
 }
 
 /**
- * Post a PR thread comment using the ADO REST API via Node's native https module.
- * FIX: replaced spawnSync("curl", ...) which was vulnerable to shell injection
- * when the Bearer token or URL contained special characters.
+ * Post a PR comment to Azure Repos using the ADO REST API.
  */
-async function postPrComment(comment: string): Promise<void> {
+async function postAzureReposComment(comment: string, prId: string): Promise<void> {
   const collectionUri = tl.getVariable("System.CollectionUri") || "";
   const project       = tl.getVariable("System.TeamProject") || "";
   let repoId          = tl.getVariable("Build.Repository.ID") || "";
-  const repoName      = tl.getVariable("Build.Repository.Name") || "";
-  const prId          = tl.getVariable("System.PullRequest.PullRequestId");
   const token         = tl.getVariable("System.AccessToken") || "";
-
-  if (!prId) {
-    console.log("Not a PR build — skipping comment.");
-    return;
-  }
 
   // Fix: Build.Repository.ID may contain slashes (e.g., "org/repo") in some ADO configs
   // Extract just the repository name (last part after slash)
@@ -325,12 +316,6 @@ async function postPrComment(comment: string): Promise<void> {
     repoId = extractedName;
   }
 
-  // Debug logging to help diagnose path construction issues
-  console.log(`PR comment debug: collectionUri=${sanitizeLog(collectionUri)}`);
-  console.log(`PR comment debug: project=${sanitizeLog(project)}`);
-  console.log(`PR comment debug: repoId=${sanitizeLog(repoId)}`);
-  console.log(`PR comment debug: prId=${sanitizeLog(prId)}`);
-
   // FIX: validate the ADO collection URI is a trusted hostname before making the request
   const parsedUri = new URL(collectionUri);
   const trustedHosts = /^([a-z0-9-]+\.)?(visualstudio\.com|dev\.azure\.com|azure\.com)$/i;
@@ -338,12 +323,10 @@ async function postPrComment(comment: string): Promise<void> {
     throw new Error(`Untrusted ADO host: ${sanitizeLog(parsedUri.hostname)}`);
   }
 
-  // Construct the API path correctly for both dev.azure.com and on-prem ADO Server
-  // The collectionUri already contains the base path, so we only add the project if needed
   const basePath = parsedUri.pathname.replace(/\/$/, "");
   const apiPath = `${basePath}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repoId)}/pullRequests/${encodeURIComponent(prId)}/threads?api-version=7.1`;
   
-  console.log(`PR comment debug: full API path=${sanitizeLog(apiPath)}`);
+  console.log(`Azure Repos API: ${sanitizeLog(apiPath)}`);
 
   const body = JSON.stringify({
     comments: [{ parentCommentId: 0, content: comment, commentType: 1 }],
@@ -369,14 +352,13 @@ async function postPrComment(comment: string): Promise<void> {
           try {
             const resp = JSON.parse(data) as { id?: number };
             if (resp.id) {
-              // FIX: log injection — sanitize before logging
-              console.log(`PR comment posted (thread id ${sanitizeLog(String(resp.id))}).`);
+              console.log(`Azure Repos comment posted (thread id ${sanitizeLog(String(resp.id))}).`);
             } else {
-              console.log("PR comment posted (no thread id in response).");
+              console.log("Azure Repos comment posted (no thread id in response).");
             }
             resolve();
           } catch {
-            reject(new Error(`Failed to parse PR comment response: ${sanitizeLog(data.slice(0, 200))}`));
+            reject(new Error(`Failed to parse Azure Repos response: ${sanitizeLog(data.slice(0, 200))}`));
           }
         });
       },
@@ -385,6 +367,102 @@ async function postPrComment(comment: string): Promise<void> {
     req.write(body);
     req.end();
   });
+}
+
+/**
+ * Post a PR comment to GitHub using the GitHub REST API.
+ */
+async function postGitHubComment(comment: string, prNumber: string): Promise<void> {
+  // For GitHub PRs, System.PullRequest.PullRequestNumber contains the GitHub PR number
+  const repoUri = tl.getVariable("Build.Repository.Uri") || "";
+  const token = tl.getVariable("System.AccessToken") || "";
+  
+  // Extract owner/repo from GitHub URL (e.g., https://github.com/owner/repo or git@github.com:owner/repo.git)
+  const match = repoUri.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+  if (!match) {
+    throw new Error(`Cannot parse GitHub repository from URI: ${sanitizeLog(repoUri)}`);
+  }
+  
+  const owner = match[1];
+  const repo = match[2];
+  const apiPath = `/repos/${owner}/${repo}/issues/${prNumber}/comments`;
+  
+  console.log(`GitHub API: https://api.github.com${sanitizeLog(apiPath)}`);
+
+  const body = JSON.stringify({ body: comment });
+
+  await new Promise<void>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.github.com",
+        path: apiPath,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "User-Agent": "ADO-TF-Agent",
+          "Accept": "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk: string) => { data += chunk; });
+        res.on("end", () => {
+          if (res.statusCode === 201) {
+            try {
+              const resp = JSON.parse(data) as { id?: number };
+              console.log(`GitHub comment posted (id ${sanitizeLog(String(resp.id || "unknown"))}).`);
+            } catch {
+              console.log("GitHub comment posted.");
+            }
+            resolve();
+          } else {
+            reject(new Error(`GitHub API error (${res.statusCode}): ${sanitizeLog(data.slice(0, 200))}`));
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Post a PR thread comment (supports both Azure Repos and GitHub).
+ * Routes to the appropriate API based on Build.Repository.Provider.
+ */
+async function postPrComment(comment: string): Promise<void> {
+  const provider = tl.getVariable("Build.Repository.Provider") || "";
+  const prId = tl.getVariable("System.PullRequest.PullRequestId");
+  const prNumber = tl.getVariable("System.PullRequest.PullRequestNumber");
+
+  if (!prId && !prNumber) {
+    console.log("Not a PR build — skipping comment.");
+    return;
+  }
+
+  console.log(`Repository provider: ${sanitizeLog(provider)}`);
+
+  if (provider === "TfsGit" || provider === "TfsVersionControl") {
+    // Azure Repos
+    if (!prId) {
+      console.log("Azure Repos PR detected but no PullRequestId — skipping comment.");
+      return;
+    }
+    await postAzureReposComment(comment, prId);
+  } else if (provider === "GitHub") {
+    // GitHub
+    if (!prNumber) {
+      console.log("GitHub PR detected but no PullRequestNumber — skipping comment.");
+      return;
+    }
+    await postGitHubComment(comment, prNumber);
+  } else {
+    console.log(`PR comments not supported for provider: ${sanitizeLog(provider)} — skipping.`);
+  }
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

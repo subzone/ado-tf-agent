@@ -226,7 +226,7 @@
       "required": false,
       "groupName": "planArtifact",
       "visibleRule": "command = plan",
-      "helpMarkDown": "Posts a Markdown plan summary (add/change/destroy counts + resource table) as a pull request thread comment. Requires **Allow scripts to access the OAuth token** in the pipeline settings."
+      "helpMarkDown": "Posts a Markdown plan summary (add/change/destroy counts + resource table) as a pull request thread comment. Supports Azure Repos and GitHub. Requires **Allow scripts to access the OAuth token** in the pipeline settings."
     },
     {
       "name": "additionalArguments",

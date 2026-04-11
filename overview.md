@@ -224,6 +224,8 @@ Built from actual `configuration.references` in the plan JSON — real edges bet
 
 Post a formatted plan summary as a pull request thread comment automatically.
 
+**Supports:** Azure Repos and GitHub repositories.
+
 ### Setup
 
 1. Enable **Allow scripts to access the OAuth token** in your pipeline settings (Edit pipeline → ··· → Triggers → uncheck "Limit job authorization scope").
@@ -239,7 +241,7 @@ Post a formatted plan summary as a pull request thread comment automatically.
     postPrComment: true
 ```
 
-The comment is only posted on PR builds. On branch builds it is silently skipped.
+The comment is only posted on PR builds. On branch builds it is silently skipped. The task automatically detects whether you're using Azure Repos or GitHub and uses the appropriate API.
 
 ### What the comment looks like
 
