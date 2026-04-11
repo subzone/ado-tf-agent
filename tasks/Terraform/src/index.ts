@@ -315,6 +315,12 @@ async function postPrComment(comment: string): Promise<void> {
     return;
   }
 
+  // Debug logging to help diagnose path construction issues
+  console.log(`PR comment debug: collectionUri=${sanitizeLog(collectionUri)}`);
+  console.log(`PR comment debug: project=${sanitizeLog(project)}`);
+  console.log(`PR comment debug: repoId=${sanitizeLog(repoId)}`);
+  console.log(`PR comment debug: prId=${sanitizeLog(prId)}`);
+
   // FIX: validate the ADO collection URI is a trusted hostname before making the request
   const parsedUri = new URL(collectionUri);
   const trustedHosts = /^([a-z0-9-]+\.)?(visualstudio\.com|dev\.azure\.com|azure\.com)$/i;
@@ -322,7 +328,13 @@ async function postPrComment(comment: string): Promise<void> {
     throw new Error(`Untrusted ADO host: ${sanitizeLog(parsedUri.hostname)}`);
   }
 
-  const apiPath = `/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repoId)}/pullRequests/${encodeURIComponent(prId)}/threads?api-version=7.1`;
+  // Construct the API path correctly for both dev.azure.com and on-prem ADO Server
+  // The collectionUri already contains the base path, so we only add the project if needed
+  const basePath = parsedUri.pathname.replace(/\/$/, "");
+  const apiPath = `${basePath}/${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repoId)}/pullRequests/${encodeURIComponent(prId)}/threads?api-version=7.1`;
+  
+  console.log(`PR comment debug: full API path=${sanitizeLog(apiPath)}`);
+
   const body = JSON.stringify({
     comments: [{ parentCommentId: 0, content: comment, commentType: 1 }],
     status: 1,
@@ -332,7 +344,7 @@ async function postPrComment(comment: string): Promise<void> {
     const req = https.request(
       {
         hostname: parsedUri.hostname,
-        path: parsedUri.pathname.replace(/\/$/, "") + apiPath,
+        path: apiPath,
         method: "POST",
         headers: {
           "Content-Type": "application/json",
