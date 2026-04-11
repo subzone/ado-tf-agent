@@ -317,10 +317,12 @@ async function postPrComment(comment: string): Promise<void> {
   }
 
   // Fix: Build.Repository.ID may contain slashes (e.g., "org/repo") in some ADO configs
-  // Use Build.Repository.Name instead if ID contains slashes
+  // Extract just the repository name (last part after slash)
   if (repoId.includes("/")) {
-    console.log(`Repository ID contains slash (${sanitizeLog(repoId)}), using Repository.Name instead`);
-    repoId = repoName;
+    const parts = repoId.split("/");
+    const extractedName = parts[parts.length - 1];
+    console.log(`Repository ID contains slash (${sanitizeLog(repoId)}), extracting name: ${sanitizeLog(extractedName)}`);
+    repoId = extractedName;
   }
 
   // Debug logging to help diagnose path construction issues
