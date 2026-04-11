@@ -1,14 +1,25 @@
 {
   "manifestVersion": 1,
   "id": "ado-tf-agent",
-  "version": "1.0.4",
-
+  "version": "0.1.8",
   "name": "ADO Terraform Agent",
   "publisher": "subzone",
   "description": "Terraform pipeline task with multi-cloud backends plus an interactive build results tab with color-coded diffs, expandable attribute changes, dependency graph, policy warnings and PR comments.",
   "public": true,
-  "categories": ["Azure Pipelines"],
-  "tags": ["Terraform", "IaC", "Plan", "Visualization", "Azure", "AWS", "GCP", "Infrastructure", "DevOps"],
+  "categories": [
+    "Azure Pipelines"
+  ],
+  "tags": [
+    "Terraform",
+    "IaC",
+    "Plan",
+    "Visualization",
+    "Azure",
+    "AWS",
+    "GCP",
+    "Infrastructure",
+    "DevOps"
+  ],
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"
@@ -17,7 +28,11 @@
   "icons": {
     "default": "images/extension-icon.png"
   },
-  "scopes": ["vso.build", "vso.build_execute", "vso.code_write"],
+  "scopes": [
+    "vso.build",
+    "vso.build_execute",
+    "vso.code_write"
+  ],
   "content": {
     "details": {
       "path": "overview.md"
@@ -62,7 +77,9 @@
     {
       "id": "terraform-task",
       "type": "ms.vss-distributed-task.task",
-      "targets": ["ms.vss-distributed-task.tasks"],
+      "targets": [
+        "ms.vss-distributed-task.tasks"
+      ],
       "properties": {
         "name": "tasks/Terraform"
       }
@@ -71,11 +88,15 @@
       "id": "terraform-plan-tab",
       "type": "ms.vss-build-web.build-results-tab",
       "description": "Visual Terraform plan and diagram from published plan.json artifact.",
-      "targets": ["ms.vss-build-web.build-results-view"],
+      "targets": [
+        "ms.vss-build-web.build-results-view"
+      ],
       "properties": {
         "name": "Terraform",
         "uri": "ui/dist/planTab.html",
-        "supportsTasks": ["b8f3a2c1-7d4e-4a9b-8f1c-3e5d7a9b2c4d"]
+        "supportsTasks": [
+          "b8f3a2c1-7d4e-4a9b-8f1c-3e5d7a9b2c4d"
+        ]
       }
     }
   ]

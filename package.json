@@ -3,6 +3,10 @@
   "private": true,
   "description": "Azure DevOps extension: Terraform tasks + build results visualization",
   "scripts": {
+    "version:sync": "node scripts/sync-version.js",
+    "version:from-git": "node scripts/sync-version.js --from-git",
+    "version:check": "node scripts/sync-version.js --dry-run",
+    "prebuild": "npm run version:check",
     "build:task": "cd tasks/Terraform && npm ci && npm run build",
     "build:ui": "cd ui && npm ci && npm run build",
     "build": "npm run build:task && npm run build:ui",

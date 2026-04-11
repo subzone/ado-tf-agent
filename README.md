@@ -63,8 +63,17 @@ Workflow: [`.github/workflows/extension.yml`](.github/workflows/extension.yml).
 | Trigger | What happens |
 |--------|----------------|
 | Push / PR to `main` or `master` | Builds and uploads the **VSIX** as a workflow artifact (no Marketplace publish). |
-| Push a **version tag** `v*` (e.g. `v0.1.1`) | Builds, then **publishes** that VSIX to the Marketplace. **Bump `version` in `vss-extension.json` before tagging** — each publish must use a new version. |
+| Push a **version tag** `v*` (e.g. `v0.2.0`) | Automatically syncs version across all files, builds, then **publishes** that VSIX to the Marketplace. |
 | **Run workflow** manually | Builds; set **Publish VSIX to Marketplace** to `true` to publish. |
+
+**Version management**: The extension uses **automated version sync** from git tags. Simply create and push a version tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow automatically updates `vss-extension.json`, `task.json`, and all package versions to match. See [VERSIONING.md](VERSIONING.md) for details.
 
 **Repository secret** (Settings → Secrets and variables → Actions):
 

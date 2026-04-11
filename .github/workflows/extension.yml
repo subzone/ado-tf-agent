@@ -41,6 +41,9 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      - name: Sync version from git tag
+        run: npm run version:from-git
+
       - name: Package extension (VSIX)
         run: npm run package
 
