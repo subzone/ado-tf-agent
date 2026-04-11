@@ -306,13 +306,21 @@ function buildPrComment(summary: PlanSummary, buildId: string, buildUrl: string)
 async function postPrComment(comment: string): Promise<void> {
   const collectionUri = tl.getVariable("System.CollectionUri") || "";
   const project       = tl.getVariable("System.TeamProject") || "";
-  const repoId        = tl.getVariable("Build.Repository.ID") || "";
+  let repoId          = tl.getVariable("Build.Repository.ID") || "";
+  const repoName      = tl.getVariable("Build.Repository.Name") || "";
   const prId          = tl.getVariable("System.PullRequest.PullRequestId");
   const token         = tl.getVariable("System.AccessToken") || "";
 
   if (!prId) {
     console.log("Not a PR build — skipping comment.");
     return;
+  }
+
+  // Fix: Build.Repository.ID may contain slashes (e.g., "org/repo") in some ADO configs
+  // Use Build.Repository.Name instead if ID contains slashes
+  if (repoId.includes("/")) {
+    console.log(`Repository ID contains slash (${sanitizeLog(repoId)}), using Repository.Name instead`);
+    repoId = repoName;
   }
 
   // Debug logging to help diagnose path construction issues
