@@ -6,7 +6,7 @@
     "build": "webpack --mode production"
   },
   "dependencies": {
-    "azure-devops-extension-api": "^4.252.0",
+    "azure-devops-extension-api": "^5.272.3",
     "azure-devops-extension-sdk": "^4.0.2",
     "mermaid": "^11.14.0"
   },
