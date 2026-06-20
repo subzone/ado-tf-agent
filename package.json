@@ -13,6 +13,6 @@
     "package": "npm run build && npx --yes tfx-cli extension create --manifest-globs vss-extension.json --output-path dist"
   },
   "devDependencies": {
-    "tfx-cli": "^0.23.1"
+    "tfx-cli": "^0.23.3"
   }
 }
