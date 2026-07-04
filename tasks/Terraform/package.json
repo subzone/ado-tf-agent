@@ -6,7 +6,7 @@
     "build": "tsc -p ."
   },
   "dependencies": {
-    "azure-pipelines-task-lib": "^5.0.0",
+    "azure-pipelines-task-lib": "^5.277.0",
     "azure-pipelines-tool-lib": "^2.0.0"
   },
   "devDependencies": {
